@@ -16,7 +16,10 @@ import type { LanguageModel } from "ai";
 const PROVIDER = (process.env.AI_PROVIDER ?? "google").toLowerCase();
 
 const DEFAULT_MODEL: Record<string, string> = {
-  google: "gemini-2.5-flash",
+  // gemini-2.0-flash has more generous free-tier limits than 2.5-flash
+  // (notably a higher daily request ceiling), which keeps a public demo
+  // reliable. Switch to gemini-2.0-flash-lite for even higher per-minute limits.
+  google: "gemini-2.0-flash",
   anthropic: "claude-sonnet-4-6",
 };
 
