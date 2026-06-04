@@ -101,6 +101,8 @@ lib/
 scripts/mcp-smoke.ts            # live MCP integration test
 ```
 
+> 🛠 **Developers:** see **[`CLAUDE.md`](CLAUDE.md)** for architecture, conventions, and the Kapruka MCP gotchas.
+
 ## Notes
 - Free public MCP tier: ~60 requests/min and 30 orders/hour per IP — the client surfaces rate-limit messages gracefully.
 - `kapruka_create_order` places a **real** guest order (a click-to-pay link); no money moves until someone actually pays it.
