@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* ---- Malee design tokens (warm Sri Lankan gifting palette) ---- */
+@theme {
+  --color-cream: #faf6ee;
+  --color-card: #ffffff;
+  --color-ink: #221d17;
+  --color-muted: #7a6f5f;
+  --color-brand: #0f7a5f;
+  --color-brand-dark: #0a5743;
+  --color-accent: #e0922b;
+  --color-accent-soft: #fbe6cf;
+  --color-blush: #f6e3da;
+  --color-line: #ece2d2;
+
+  --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1100px 620px at 82% -12%, #fdeede 0%, transparent 60%),
+    radial-gradient(820px 520px at -12% 112%, #e3f1ea 0%, transparent 58%),
+    var(--color-cream);
+  background-attachment: fixed;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #e2d8c8;
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d4c8b4;
+  background-clip: content-box;
+}
+
+/* Entrance animation for streamed cards/messages */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-blush);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: shimmer 1.4s infinite;
+}
