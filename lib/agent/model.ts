@@ -16,11 +16,12 @@ import type { LanguageModel } from "ai";
 const PROVIDER = (process.env.AI_PROVIDER ?? "google").toLowerCase();
 
 const DEFAULT_MODEL: Record<string, string> = {
-  // gemini-2.5-flash is the model with working free-tier quota on this key
-  // (the 2.0-flash variants returned quota-exceeded). Its limit is per-minute,
-  // so brief bursts are handled by the chat route's graceful retry message.
-  // For higher limits, enable Gemini billing or set AI_PROVIDER=anthropic.
-  google: "gemini-2.5-flash",
+  // gemini-3.1-flash-lite has the most generous free tier of the text models
+  // (15 RPM / 500 RPD, vs 5 RPM / 20 RPD for 2.5-flash) — the right pick for a
+  // public free-tier demo. Bursts beyond the RPM are handled by the chat
+  // route's graceful retry. For higher limits, enable Gemini billing or set
+  // AI_PROVIDER=anthropic (claude-sonnet-4-6 default).
+  google: "gemini-3.1-flash-lite",
   anthropic: "claude-sonnet-4-6",
 };
 
