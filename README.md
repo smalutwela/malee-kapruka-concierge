@@ -4,7 +4,7 @@
 
 Built for the **[Kapruka Agent Challenge](https://www.kapruka.com/contactUs/agentChallenge.html)** on the free [Kapruka MCP server](https://mcp.kapruka.com).
 
-**🔗 Live demo:** _deploying — URL coming_
+**🔗 Live demo:** **https://kapruka-ai-agent-claude.vercel.app**
 
 ---
 
