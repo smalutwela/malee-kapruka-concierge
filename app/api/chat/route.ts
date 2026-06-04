@@ -73,9 +73,18 @@ export async function POST(req: Request) {
     model: getAgentModel(),
     messages: modelMessages,
     tools: kaprukaTools,
-    // Let Claude chain tool calls (search → detail → delivery → order) in one turn.
-    stopWhen: stepCountIs(12),
+    // Chain tool calls (search → detail → delivery → order) within one turn.
+    stopWhen: stepCountIs(8),
   });
 
-  return result.toUIMessageStreamResponse();
+  return result.toUIMessageStreamResponse({
+    onError: (error) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/quota|rate.?limit|429|exceeded|resource.?exhausted/i.test(msg)) {
+        return "Aiyo — I'm getting a lot of requests right now 🙏 Please give me a few seconds and try again.";
+      }
+      console.error("chat stream error:", msg);
+      return "Sorry, something hiccuped on my end. Please try again in a moment.";
+    },
+  });
 }

@@ -283,7 +283,7 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
 }
 
 export function ChatShell() {
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, error, regenerate } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
   const busy = status === "submitted" || status === "streaming";
@@ -329,6 +329,20 @@ export function ChatShell() {
               <Avatar />
               <div className="flex items-center gap-1 pt-3">
                 <Dot /> <Dot delay={150} /> <Dot delay={300} />
+              </div>
+            </div>
+          )}
+          {status === "error" && (
+            <div className="flex gap-3">
+              <Avatar />
+              <div className="rounded-2xl rounded-tl-md border border-[#e7c3bb] bg-blush/60 px-4 py-2.5 text-sm text-[#8a3d30]">
+                {error?.message || "Something went wrong."}{" "}
+                <button
+                  onClick={() => void regenerate()}
+                  className="font-semibold underline underline-offset-2 hover:opacity-80"
+                >
+                  Try again
+                </button>
               </div>
             </div>
           )}
