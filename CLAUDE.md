@@ -33,15 +33,16 @@ Tool results stream back as typed UI parts; `components/chat.tsx` (`ToolView`) d
 | `components/locale-switcher.tsx` | Header language dropdown (English default, Sinhala, Tamil) |
 | `lib/types.ts` | Types mirroring Kapruka JSON shapes |
 | `lib/utils.ts` | `cn`, `formatPrice`, `resizeImage` (bumps the CDN `width=` segment) |
-| `components/chat.tsx` | `ChatShell`, message rendering, tool dispatch, welcome screen, composer, cart drawer |
+| `components/chat.tsx` | `ChatShell`, message rendering (assistant text via `RichText`), tool dispatch, welcome screen, composer, cart drawer |
 | `components/cards.tsx` | Product / delivery / order / tracking cards + `AddToGift`, `SmartImage` |
+| `components/rich-text.tsx` | Dependency-free inline Markdown-lite formatter (bold/italic/links) for Malee's chat messages — no Markdown library |
 | `app/globals.css` | Tailwind v4 theme tokens (Light/Dark/Warm; Light default = Kapruka brand palette) + animations + per-locale Sinhala/Tamil font stacks (`html[data-locale=…]`) |
 | `scripts/mcp-smoke.ts` | Live MCP integration test (`npm run mcp:test`) |
 
 ## Kapruka MCP — read before touching tools
 - Endpoint `https://mcp.kapruka.com/mcp`, Streamable HTTP, **no auth**. Free tier ~60 req/min; `create_order` 30/hr.
 - Every tool call nests args under a **`params`** object, and we force `response_format: "json"`. Results arrive as a JSON *string* in `result.content[0].text`; `callTool` returns `{ json, text }`.
-- **Search quirk:** the catalog files most items under a generic `General` category, so a `category` filter frequently returns nothing. `searchProducts` searches keywords-first and **auto-retries without the category** when empty (`isEmptyResult`). Prefer specific, descriptive queries.
+- **Search quirk:** the catalog files most items under a generic `General` category, so a `category` filter frequently returns nothing. `searchProducts` searches keywords-first and **auto-retries without the category** when empty (`isEmptyResult`). It also **dedupes results by id** (`dedupeById`) — the catalogue sometimes returns the same product twice (which would otherwise collide on React's `key`). Prefer specific, descriptive queries.
 - **`create_order` is a REAL transaction** — it mints a guest order + click-to-pay link (no money moves until someone pays). Test only with explicit authorization: `npm run mcp:test -- --order`. The persona must show an order summary and get explicit confirmation before calling it.
 
 ## AI provider & model
@@ -53,6 +54,7 @@ Tool results stream back as typed UI parts; `components/chat.tsx` (`ToolView`) d
 ## Cart & context
 - The cart is client-owned (`lib/cart/store.ts`); "Add to gift" fills it and the drawer manages quantities.
 - Each turn the client sends `cart` in the request body; the route injects a compact cart summary (+ today's Colombo date) into the latest user turn, so Malee always knows what to order. Checkout builds `create_order` from those `product_id`s.
+- The order-confirmation card (`OrderSummaryCard`) itemises quantities from a **snapshot of the cart taken when it mounts** — `create_order` returns totals only, no line items. Snapshot (not live) so later cart edits never rewrite an order that's already placed.
 
 ## Localization (i18n)
 - Three locales — **English (default)**, **Sinhala (සිංහල)**, **Tamil (தமிழ்)**. No URL routing (`/si`, `/ta`): Malee is a single-screen client app, so locale is a **cookie** (`malee-locale`) read in the root layout and switched live on the client. Reading the cookie makes `/` dynamically rendered — an accepted trade-off for SSR-correct language (no flash, correct `<html lang>`).
