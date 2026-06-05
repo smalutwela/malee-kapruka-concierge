@@ -62,8 +62,18 @@ export async function POST(req: Request) {
     locale?: string;
   };
 
-  // colombo date + cart summary + (for si/ta) a "reply in this language" note.
-  const context = [colomboContext(), cartContext(cart), localeContext(normalizeLocale(locale))]
+  // colombo date + cart summary + (for si/ta) a "reply in this language" note,
+  // plus a no-re-greet reminder once the chat is underway (the persona greets
+  // once; smaller models otherwise re-greet every turn).
+  const underway = messages.some((m) => m.role === "assistant");
+  const context = [
+    colomboContext(),
+    cartContext(cart),
+    localeContext(normalizeLocale(locale)),
+    underway
+      ? 'The conversation is already underway — do NOT greet or say "Ayubowan" again; reply straight to the point.'
+      : "",
+  ]
     .filter(Boolean)
     .join("\n\n");
   const converted = await convertToModelMessages(messages);

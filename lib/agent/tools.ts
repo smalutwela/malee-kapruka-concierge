@@ -33,6 +33,26 @@ function isEmptyResult(r: unknown): boolean {
   return false;
 }
 
+/**
+ * The catalogue sometimes returns the same product twice in one search. Collapse
+ * by id (keep first) so the UI's `key={p.id}` stays unique and the model sees
+ * each item once. Items without an id are left untouched.
+ */
+function dedupeById(res: unknown): unknown {
+  if (!res || typeof res !== "object") return res;
+  const r = res as { results?: unknown };
+  if (!Array.isArray(r.results)) return res;
+  const seen = new Set<string>();
+  const results = (r.results as { id?: unknown }[]).filter((p) => {
+    const id = typeof p?.id === "string" ? p.id : null;
+    if (id === null) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  return { ...r, results };
+}
+
 const currency = z
   .string()
   .default("LKR")
@@ -74,7 +94,7 @@ export const kaprukaTools = {
       if (isEmptyResult(res) && category) {
         res = await run("kapruka_search_products", base);
       }
-      return res;
+      return dedupeById(res);
     },
   }),
 

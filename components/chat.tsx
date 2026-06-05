@@ -26,6 +26,7 @@ import { cn, formatPrice } from "@/lib/utils";
 import { cartCount, cartSubtotal, useCart } from "@/lib/cart/store";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { RichText } from "@/components/rich-text";
 import { useLocale, useT } from "@/lib/i18n/context";
 
 /* part shapes we read off UIMessage.parts */
@@ -152,7 +153,7 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
           if (part.type === "text" && part.text) {
             return (
               <p key={i} className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
-                {part.text}
+                <RichText text={part.text} />
               </p>
             );
           }

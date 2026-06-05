@@ -341,6 +341,11 @@ export function OrderSummaryCard({ order }: { order: OrderConfirmation }) {
   const t = useT();
   const { expired, label } = useCountdown(order.expires_at);
   const s = order.summary;
+  // Snapshot the cart as it was when this card mounted, so the buyer sees
+  // exactly what they're paying for (name × qty) — Kapruka's pay page and the
+  // create_order response don't itemise. Snapshot, not live, so later cart
+  // edits never rewrite an order that's already placed.
+  const [lines] = useState(() => useCart.getState().items);
   return (
     <div className="animate-rise my-2 overflow-hidden rounded-2xl border border-brand/30 bg-card shadow-md">
       <div className="flex items-center gap-2 bg-brand px-4 py-2.5 text-white">
@@ -349,6 +354,21 @@ export function OrderSummaryCard({ order }: { order: OrderConfirmation }) {
         <span className="ml-auto font-mono text-xs opacity-90">{order.order_ref}</span>
       </div>
       <div className="space-y-1.5 p-4 text-sm">
+        {lines.length > 0 && (
+          <div className="space-y-1.5 pb-1">
+            {lines.map((i) => (
+              <div key={i.id} className="flex items-start justify-between gap-3">
+                <span className="line-clamp-2 min-w-0 flex-1 leading-snug text-muted">
+                  <span className="font-semibold text-ink">{i.quantity}×</span> {i.name}
+                </span>
+                <span className="shrink-0 tabular-nums">
+                  {formatPrice((i.price?.amount ?? 0) * i.quantity, i.price?.currency ?? s.currency)}
+                </span>
+              </div>
+            ))}
+            <div className="my-1 border-t border-line" />
+          </div>
+        )}
         <Row label={t.cards.items} value={formatPrice(s.items_total, s.currency)} />
         <Row label={t.cards.delivery} value={formatPrice(s.delivery_fee, s.currency)} />
         {s.addons_total > 0 && (
