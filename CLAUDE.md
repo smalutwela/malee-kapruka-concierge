@@ -77,6 +77,7 @@ Deploy: Vercel (`vercel --prod`); set `GOOGLE_GENERATIVE_AI_API_KEY` in the proj
 ## Conventions
 - **Commits are authored only by the user.**
 - **Git hooks (husky):** `pre-commit` runs `typecheck` + `lint` (fast, high-signal); `pre-push` runs the full `build` (mirrors the Vercel build, so it runs once per push, not per commit). They self-install via the `prepare` script on `npm install`. Bypass for WIP with `git commit --no-verify` / `git push --no-verify`.
+- **Keep docs in step:** when a change adds/renames a module or alters documented behavior, architecture, or a convention, update `CLAUDE.md` in the **same commit** (and `README.md` for setup/deploy/env changes). Trigger-based, not a gate — most commits don't need it.
 - `.env*` is gitignored (except `.env.example`); never commit secrets. `.claude/settings.local.json` is ignored too.
 - **Add a tool:** define it in `lib/agent/tools.ts` (Zod schema + `execute` → `run("kapruka_…")`), then render its result in `components/chat.tsx` `ToolView` and add a card to `components/cards.tsx`.
 - **Tweak the persona:** edit `SYSTEM_PROMPT` in `lib/agent/prompt.ts`.
