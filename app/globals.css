@@ -84,6 +84,24 @@ body {
 }
 
 /* ============================================================
+   Locale fonts — Fraunces/Jakarta cover Latin only, so for Sinhala &
+   Tamil we keep the brand font first (Latin words like "Malee", "Kapruka",
+   "Rs 6,000") and let the script glyphs fall through to a Noto/system font.
+   ============================================================ */
+html[data-locale="si"] {
+  --font-sans: var(--font-jakarta), "Noto Sans Sinhala", "Nirmala UI", "Iskoola Pota",
+    ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), "Noto Serif Sinhala", "Noto Sans Sinhala",
+    "Nirmala UI", "Iskoola Pota", Georgia, serif;
+}
+html[data-locale="ta"] {
+  --font-sans: var(--font-jakarta), "Noto Sans Tamil", "Nirmala UI", "Latha",
+    ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), "Noto Serif Tamil", "Noto Sans Tamil",
+    "Nirmala UI", "Latha", Georgia, serif;
+}
+
+/* ============================================================
    Themes — override the @theme color tokens per data-theme.
    Default (no attribute) is the Light theme (Kapruka brand palette) in @theme above.
    ============================================================ */

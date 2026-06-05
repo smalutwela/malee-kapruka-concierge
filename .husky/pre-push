@@ -1,0 +1,3 @@
+# Full build gate before code leaves your machine — mirrors the Vercel build.
+# Slower, so it runs on push (not every commit). Skip with `git push --no-verify`.
+npm run build

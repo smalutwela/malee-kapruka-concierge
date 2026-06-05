@@ -25,6 +25,8 @@ import type {
 import { cn, formatPrice } from "@/lib/utils";
 import { cartCount, cartSubtotal, useCart } from "@/lib/cart/store";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { LocaleSwitcher } from "@/components/locale-switcher";
+import { useLocale, useT } from "@/lib/i18n/context";
 
 /* part shapes we read off UIMessage.parts */
 type AnyPart = {
@@ -34,15 +36,16 @@ type AnyPart = {
   output?: unknown;
 };
 
-const TOOL_STATUS: Record<string, string> = {
-  searchProducts: "Searching the Kapruka catalogue…",
-  getProduct: "Fetching the details…",
-  listCategories: "Browsing categories…",
-  listDeliveryCities: "Looking up delivery areas…",
-  checkDelivery: "Checking delivery…",
-  createOrder: "Preparing your order…",
-  trackOrder: "Tracking your order…",
-};
+/* Occasion chips, in display order — labels come from the active locale. */
+const OCCASION_KEYS = [
+  "birthday",
+  "anniversary",
+  "avurudu",
+  "getWell",
+  "love",
+  "newBaby",
+  "justBecause",
+] as const;
 
 function Avatar({ size = "md" }: { size?: "md" | "lg" }) {
   return (
@@ -67,9 +70,15 @@ function noteOf(output: unknown): { error?: string; note?: string } | null {
 }
 
 function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAsk: AskFn }) {
+  const t = useT();
   const n = noteOf(output);
   if (n?.error) {
-    return <p className="my-1 text-xs text-[#b4503f]">I couldn&apos;t complete that — {n.error}</p>;
+    return (
+      <p className="my-1 text-xs text-[#b4503f]">
+        {t.errors.toolPrefix}
+        {n.error}
+      </p>
+    );
   }
 
   switch (name) {
@@ -103,7 +112,7 @@ function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAs
           {cities.slice(0, 12).map((c) => (
             <button
               key={c.name}
-              onClick={() => onAsk(`Can you deliver to ${c.name}?`)}
+              onClick={() => onAsk(t.prompts.deliverTo(c.name))}
               className="rounded-full border border-line bg-card px-2.5 py-1 text-xs text-ink transition hover:border-brand"
             >
               {c.name}
@@ -118,6 +127,7 @@ function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAs
 }
 
 function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
+  const t = useT();
   const parts = message.parts as AnyPart[];
 
   if (message.role === "user") {
@@ -154,7 +164,7 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
             if (part.state === "output-error") {
               return (
                 <p key={i} className="text-xs text-[#b4503f]">
-                  Something went wrong with that step.
+                  {t.errors.toolStep}
                 </p>
               );
             }
@@ -164,7 +174,7 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
                 className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1.5 text-xs text-muted"
               >
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
-                {TOOL_STATUS[name] ?? "Working…"}
+                {t.tools[name as keyof typeof t.tools] ?? t.tools.working}
               </div>
             );
           }
@@ -175,48 +185,35 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
   );
 }
 
-const OCCASIONS = [
-  "Birthday",
-  "Anniversary",
-  "Avurudu",
-  "Get well soon",
-  "Love & romance",
-  "New baby",
-  "Just because",
-];
-
-const EXAMPLES = [
-  "Birthday flowers for my amma in Colombo, under Rs 6,000",
-  "A cake delivered to Kandy this Friday",
-  "A romantic anniversary gift with chocolates",
-];
-
 function Welcome({ onPick }: { onPick: AskFn }) {
+  const t = useT();
   return (
     <div className="animate-rise flex flex-col items-center px-2 pt-10 text-center sm:pt-16">
       <Avatar size="lg" />
       <h2 className="mt-4 font-display text-3xl tracking-tight sm:text-4xl">
-        Ayubowan! I&apos;m <span className="italic text-brand-dark">Malee</span> 🌸
+        {t.welcome.greetingPre}
+        <span className="italic text-brand-dark">Malee</span>
+        {t.welcome.greetingPost}
       </h2>
-      <p className="mt-2 max-w-md text-[15px] text-muted">
-        Your Kapruka gift concierge. Tell me who you&apos;re spoiling and where it&apos;s going —
-        I&apos;ll find something lovely and get it delivered anywhere in Sri Lanka.
-      </p>
+      <p className="mt-2 max-w-md text-[15px] text-muted">{t.welcome.subtitle}</p>
 
       <div className="mt-6 flex flex-wrap justify-center gap-2">
-        {OCCASIONS.map((o) => (
-          <button
-            key={o}
-            onClick={() => onPick(`I'm looking for a ${o.toLowerCase()} gift.`)}
-            className="rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
-          >
-            {o}
-          </button>
-        ))}
+        {OCCASION_KEYS.map((key) => {
+          const label = t.welcome.occasions[key];
+          return (
+            <button
+              key={key}
+              onClick={() => onPick(t.prompts.occasion(label))}
+              className="rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="mt-8 grid w-full max-w-xl gap-2 sm:grid-cols-1">
-        {EXAMPLES.map((ex) => (
+        {t.welcome.examples.map((ex) => (
           <button
             key={ex}
             onClick={() => onPick(ex)}
@@ -233,6 +230,7 @@ function Welcome({ onPick }: { onPick: AskFn }) {
 }
 
 function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
+  const t = useT();
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -252,7 +250,7 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
             ref={ref}
             rows={1}
             value={value}
-            placeholder="Message Malee… (e.g. flowers for my amma in Galle)"
+            placeholder={t.composer.placeholder}
             onChange={(e) => {
               setValue(e.target.value);
               e.target.style.height = "auto";
@@ -269,29 +267,30 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
           <button
             onClick={submit}
             disabled={disabled || !value.trim()}
-            aria-label="Send"
+            aria-label={t.controls.send}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-dark disabled:opacity-40"
           >
             <ArrowUp className="h-5 w-5" />
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[11px] text-muted/80">
-          Malee searches the live Kapruka catalogue, quotes delivery, and can place your order.
-        </p>
+        <p className="mt-1.5 text-center text-[11px] text-muted/80">{t.composer.footer}</p>
       </div>
     </div>
   );
 }
 
 export function ChatShell() {
+  const t = useT();
+  const { locale } = useLocale();
   const { messages, sendMessage, status, error, regenerate } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
   const busy = status === "submitted" || status === "streaming";
   const [cartOpen, setCartOpen] = useState(false);
-  // Send the live cart with every turn so Malee always knows what to order.
+  // Send the live cart + chosen language with every turn so Malee orders the
+  // right items and replies in the shopper's language.
   const ask: AskFn = (text) =>
-    void sendMessage({ text }, { body: { cart: useCart.getState().items } });
+    void sendMessage({ text }, { body: { cart: useCart.getState().items, locale } });
 
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -307,12 +306,13 @@ export function ChatShell() {
           <Avatar />
           <div className="leading-tight">
             <div className="font-display text-lg">Malee</div>
-            <div className="text-[11px] text-muted">Kapruka Gift Concierge</div>
+            <div className="text-[11px] text-muted">{t.header.tagline}</div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand-dark sm:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand" /> Live catalogue
+              <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {t.header.liveCatalogue}
             </span>
+            <LocaleSwitcher />
             <ThemeSwitcher />
             <CartButton onClick={() => setCartOpen(true)} />
           </div>
@@ -338,12 +338,12 @@ export function ChatShell() {
             <div className="flex gap-3">
               <Avatar />
               <div className="rounded-2xl rounded-tl-md border border-[#e7c3bb] bg-blush/60 px-4 py-2.5 text-sm text-[#8a3d30]">
-                {error?.message || "Something went wrong."}{" "}
+                {error?.message || t.errors.generic}{" "}
                 <button
                   onClick={() => void regenerate()}
                   className="font-semibold underline underline-offset-2 hover:opacity-80"
                 >
-                  Try again
+                  {t.errors.tryAgain}
                 </button>
               </div>
             </div>
@@ -358,7 +358,7 @@ export function ChatShell() {
         onClose={() => setCartOpen(false)}
         onCheckout={() => {
           setCartOpen(false);
-          ask("I'm ready to check out and send these gifts — let's do it.");
+          ask(t.prompts.checkout);
         }}
       />
     </div>
@@ -366,15 +366,16 @@ export function ChatShell() {
 }
 
 function CartButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
   const count = useCart((s) => cartCount(s.items));
   return (
     <button
       onClick={onClick}
-      aria-label="Open your gift cart"
+      aria-label={t.controls.openCart}
       className="relative flex h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand"
     >
       <ShoppingBag className="h-4 w-4" />
-      <span className="hidden sm:inline">Gift</span>
+      <span className="hidden sm:inline">{t.cart.label}</span>
       {count > 0 && (
         <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold text-white">
           {count}
@@ -393,6 +394,7 @@ function CartDrawer({
   onClose: () => void;
   onCheckout: () => void;
 }) {
+  const t = useT();
   const items = useCart((s) => s.items);
   const setQty = useCart((s) => s.setQty);
   const remove = useCart((s) => s.remove);
@@ -423,10 +425,10 @@ function CartDrawer({
       >
         <div className="flex items-center gap-2 border-b border-line px-4 py-3">
           <Gift className="h-4 w-4 text-brand" />
-          <span className="font-display text-lg">Your gift</span>
+          <span className="font-display text-lg">{t.cart.title}</span>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.controls.close}
             className="ml-auto rounded-full p-1 text-muted hover:bg-black/5"
           >
             <X className="h-5 w-5" />
@@ -437,8 +439,9 @@ function CartDrawer({
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-muted">
             <ShoppingBag className="h-8 w-8 opacity-40" />
             <p className="text-sm">
-              Your gift is empty. Ask Malee for ideas, then tap{" "}
-              <span className="font-medium text-ink">Add to gift</span>.
+              {t.cart.emptyPre}
+              <span className="font-medium text-ink">{t.cards.addToGift}</span>
+              {t.cart.emptyPost}
             </p>
           </div>
         ) : (
@@ -459,7 +462,7 @@ function CartDrawer({
                   <div className="mt-1.5 flex items-center gap-2">
                     <button
                       onClick={() => setQty(i.id, i.quantity - 1)}
-                      aria-label="Decrease quantity"
+                      aria-label={t.controls.decreaseQty}
                       className="flex h-6 w-6 items-center justify-center rounded-full border border-line hover:bg-black/5"
                     >
                       <Minus className="h-3 w-3" />
@@ -467,14 +470,14 @@ function CartDrawer({
                     <span className="w-5 text-center text-sm">{i.quantity}</span>
                     <button
                       onClick={() => setQty(i.id, i.quantity + 1)}
-                      aria-label="Increase quantity"
+                      aria-label={t.controls.increaseQty}
                       className="flex h-6 w-6 items-center justify-center rounded-full border border-line hover:bg-black/5"
                     >
                       <Plus className="h-3 w-3" />
                     </button>
                     <button
                       onClick={() => remove(i.id)}
-                      aria-label="Remove"
+                      aria-label={t.controls.remove}
                       className="ml-auto rounded-full p-1 text-muted hover:text-[#b4503f]"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -487,7 +490,7 @@ function CartDrawer({
               onClick={clear}
               className="text-xs text-muted underline-offset-2 hover:underline"
             >
-              Clear gift
+              {t.cart.clear}
             </button>
           </div>
         )}
@@ -495,7 +498,7 @@ function CartDrawer({
         {items.length > 0 && (
           <div className="border-t border-line p-4">
             <div className="mb-3 flex items-center justify-between text-sm">
-              <span className="text-muted">Subtotal</span>
+              <span className="text-muted">{t.cart.subtotal}</span>
               <span className="font-display text-lg text-brand-dark">
                 {formatPrice(subtotal, currency)}
               </span>
@@ -504,11 +507,9 @@ function CartDrawer({
               onClick={onCheckout}
               className="flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
             >
-              <Gift className="h-4 w-4" /> Check out with Malee
+              <Gift className="h-4 w-4" /> {t.cart.checkout}
             </button>
-            <p className="mt-2 text-center text-[11px] text-muted">
-              + delivery, calculated at checkout
-            </p>
+            <p className="mt-2 text-center text-[11px] text-muted">{t.cart.deliveryNote}</p>
           </div>
         )}
       </aside>

@@ -6,8 +6,9 @@ import {
   type UIMessage,
 } from "ai";
 import { kaprukaTools } from "@/lib/agent/tools";
-import { SYSTEM_PROMPT, colomboContext } from "@/lib/agent/prompt";
+import { SYSTEM_PROMPT, colomboContext, localeContext } from "@/lib/agent/prompt";
 import { getAgentModel } from "@/lib/agent/model";
+import { normalizeLocale } from "@/lib/i18n/config";
 
 // Allow time for multi-step tool loops against the live MCP server.
 export const maxDuration = 60;
@@ -55,9 +56,16 @@ function cartContext(cart?: CartLine[]): string {
 }
 
 export async function POST(req: Request) {
-  const { messages, cart } = (await req.json()) as { messages: UIMessage[]; cart?: CartLine[] };
+  const { messages, cart, locale } = (await req.json()) as {
+    messages: UIMessage[];
+    cart?: CartLine[];
+    locale?: string;
+  };
 
-  const context = `${colomboContext()}\n\n${cartContext(cart)}`;
+  // colombo date + cart summary + (for si/ta) a "reply in this language" note.
+  const context = [colomboContext(), cartContext(cart), localeContext(normalizeLocale(locale))]
+    .filter(Boolean)
+    .join("\n\n");
   const converted = await convertToModelMessages(messages);
   const modelMessages: ModelMessage[] = [
     {

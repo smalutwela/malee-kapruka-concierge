@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn, formatPrice, resizeImage } from "@/lib/utils";
 import { useCart } from "@/lib/cart/store";
+import { useT } from "@/lib/i18n/context";
 import type {
   CategoryList,
   DeliveryQuote,
@@ -61,11 +62,12 @@ function Badge({
 }
 
 function StockBadge({ inStock, level }: { inStock?: boolean; level?: string }) {
-  if (inStock === false) return <Badge tone="muted">Out of stock</Badge>;
-  if (level === "low") return <Badge tone="accent">Only a few left</Badge>;
+  const t = useT();
+  if (inStock === false) return <Badge tone="muted">{t.cards.outOfStock}</Badge>;
+  if (level === "low") return <Badge tone="accent">{t.cards.lowStock}</Badge>;
   return (
     <Badge tone="brand">
-      <Check className="h-3 w-3" /> In stock
+      <Check className="h-3 w-3" /> {t.cards.inStock}
     </Badge>
   );
 }
@@ -152,6 +154,7 @@ function AddToGift({
 }: {
   item: { id: string; name: string; price?: Money; image?: string | null };
 }) {
+  const t = useT();
   const add = useCart((s) => s.add);
   const [added, setAdded] = useState(false);
   return (
@@ -168,11 +171,11 @@ function AddToGift({
     >
       {added ? (
         <>
-          <Check className="h-3.5 w-3.5" /> Added
+          <Check className="h-3.5 w-3.5" /> {t.cards.added}
         </>
       ) : (
         <>
-          <Gift className="h-3.5 w-3.5" /> Add to gift
+          <Gift className="h-3.5 w-3.5" /> {t.cards.addToGift}
         </>
       )}
     </button>
@@ -182,6 +185,7 @@ function AddToGift({
 /* ----------------------------- product cards ----------------------------- */
 
 export function ProductCard({ product, onAsk }: { product: ProductSummary; onAsk?: AskFn }) {
+  const t = useT();
   const { id, name, price, compare_at_price, in_stock, stock_level, image_url, category } = product;
   return (
     <div className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -201,8 +205,8 @@ export function ProductCard({ product, onAsk }: { product: ProductSummary; onAsk
         <Price price={price} compareAt={compare_at_price} className="mt-auto" />
         <div className="mt-1 flex flex-wrap gap-2">
           <AddToGift item={{ id, name, price, image: image_url }} />
-          <GhostButton onClick={() => onAsk?.(`Tell me more about product ${id} ("${name}").`)}>
-            Details
+          <GhostButton onClick={() => onAsk?.(t.prompts.productDetails(id, name))}>
+            {t.cards.details}
           </GhostButton>
         </div>
       </div>
@@ -223,6 +227,7 @@ export function ProductGrid({ data, onAsk }: { data: SearchResults; onAsk?: AskF
 }
 
 export function ProductDetailCard({ product }: { product: ProductDetail }) {
+  const t = useT();
   const hero = resizeImage(product.images?.[0], 640) ?? product.images?.[0];
   return (
     <div className="animate-rise my-2 overflow-hidden rounded-2xl border border-line bg-card shadow-sm sm:flex">
@@ -232,7 +237,7 @@ export function ProductDetailCard({ product }: { product: ProductDetail }) {
           <StockBadge inStock={product.in_stock} level={product.stock_level} />
           {product.shipping?.ships_internationally && (
             <Badge tone="muted">
-              <Globe className="h-3 w-3" /> Ships worldwide
+              <Globe className="h-3 w-3" /> {t.cards.shipsWorldwide}
             </Badge>
           )}
         </div>
@@ -259,7 +264,7 @@ export function ProductDetailCard({ product }: { product: ProductDetail }) {
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink transition hover:bg-black/5"
             >
-              View on Kapruka <ExternalLink className="h-3.5 w-3.5" />
+              {t.cards.viewOnKapruka} <ExternalLink className="h-3.5 w-3.5" />
             </a>
           )}
         </div>
@@ -271,11 +276,12 @@ export function ProductDetailCard({ product }: { product: ProductDetail }) {
 /* ----------------------------- delivery ----------------------------- */
 
 export function DeliveryQuoteCard({ quote }: { quote: DeliveryQuote }) {
+  const t = useT();
   return (
     <div className="animate-rise my-2 rounded-2xl border border-line bg-card p-4 shadow-sm">
       <div className="flex items-center gap-2 text-sm font-semibold">
         <Truck className="h-4 w-4 text-brand" />
-        Delivery to {quote.city}
+        {t.cards.deliveryTo(quote.city)}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-1.5">
@@ -286,12 +292,12 @@ export function DeliveryQuoteCard({ quote }: { quote: DeliveryQuote }) {
           )}
           <span>
             {quote.checked_date}
-            {quote.available ? " · available" : " · not available"}
+            {quote.available ? ` · ${t.cards.available}` : ` · ${t.cards.notAvailable}`}
           </span>
         </div>
         {quote.rate != null && (
           <div>
-            <span className="text-muted">Delivery fee </span>
+            <span className="text-muted">{t.cards.deliveryFee} </span>
             <span className="font-semibold text-brand-dark">
               {formatPrice(quote.rate, quote.currency ?? "LKR")}
             </span>
@@ -300,7 +306,8 @@ export function DeliveryQuoteCard({ quote }: { quote: DeliveryQuote }) {
       </div>
       {!quote.available && quote.next_available_date && (
         <p className="mt-2 text-sm text-muted">
-          Next available: <span className="font-medium text-ink">{quote.next_available_date}</span>
+          {t.cards.nextAvailable}{" "}
+          <span className="font-medium text-ink">{quote.next_available_date}</span>
           {quote.reason ? ` — ${quote.reason}` : ""}
         </p>
       )}
@@ -331,25 +338,24 @@ function useCountdown(expiresAt?: string) {
 }
 
 export function OrderSummaryCard({ order }: { order: OrderConfirmation }) {
+  const t = useT();
   const { expired, label } = useCountdown(order.expires_at);
   const s = order.summary;
   return (
     <div className="animate-rise my-2 overflow-hidden rounded-2xl border border-brand/30 bg-card shadow-md">
       <div className="flex items-center gap-2 bg-brand px-4 py-2.5 text-white">
         <Sparkles className="h-4 w-4" />
-        <span className="text-sm font-semibold">Your gift is ready to send</span>
+        <span className="text-sm font-semibold">{t.cards.orderReady}</span>
         <span className="ml-auto font-mono text-xs opacity-90">{order.order_ref}</span>
       </div>
       <div className="space-y-1.5 p-4 text-sm">
-        <Row label="Items" value={formatPrice(s.items_total, s.currency)} />
-        <Row label="Delivery" value={formatPrice(s.delivery_fee, s.currency)} />
-        {s.addons_total > 0 && <Row label="Add-ons" value={formatPrice(s.addons_total, s.currency)} />}
+        <Row label={t.cards.items} value={formatPrice(s.items_total, s.currency)} />
+        <Row label={t.cards.delivery} value={formatPrice(s.delivery_fee, s.currency)} />
+        {s.addons_total > 0 && (
+          <Row label={t.cards.addons} value={formatPrice(s.addons_total, s.currency)} />
+        )}
         <div className="my-1 border-t border-line" />
-        <Row
-          label="Total"
-          value={formatPrice(s.grand_total, s.currency)}
-          emphasize
-        />
+        <Row label={t.cards.total} value={formatPrice(s.grand_total, s.currency)} emphasize />
         <a
           href={order.checkout_url}
           target="_blank"
@@ -361,12 +367,12 @@ export function OrderSummaryCard({ order }: { order: OrderConfirmation }) {
           aria-disabled={expired}
         >
           <ShoppingBag className="h-4 w-4" />
-          {expired ? "Payment link expired" : "Pay securely on Kapruka"}
+          {expired ? t.cards.linkExpired : t.cards.paySecurely}
           {!expired && <ExternalLink className="h-4 w-4" />}
         </a>
         <p className="flex items-center justify-center gap-1.5 pt-1 text-center text-[11px] text-muted">
           <Clock className="h-3 w-3" />
-          {expired ? "Ask Malee to create a fresh link." : `Price locked — link expires in ${label}`}
+          {expired ? t.cards.freshLink : t.cards.priceLocked(label)}
         </p>
       </div>
     </div>
@@ -427,6 +433,7 @@ export function TrackingTimeline({ order }: { order: OrderTracking }) {
 /* ----------------------------- categories ----------------------------- */
 
 export function CategoryChips({ data, onAsk }: { data: CategoryList; onAsk?: AskFn }) {
+  const t = useT();
   const cats = (data.categories ?? []).filter((c) => c.name && c.name.toLowerCase() !== "general");
   if (!cats.length) return null;
   return (
@@ -434,7 +441,7 @@ export function CategoryChips({ data, onAsk }: { data: CategoryList; onAsk?: Ask
       {cats.slice(0, 14).map((c) => (
         <button
           key={c.name}
-          onClick={() => onAsk?.(`Show me some ${c.name} gift ideas.`)}
+          onClick={() => onAsk?.(t.prompts.categoryIdeas(c.name))}
           className="rounded-full border border-line bg-card px-3 py-1.5 text-xs font-medium text-ink transition hover:border-brand hover:text-brand-dark"
         >
           {c.name}
