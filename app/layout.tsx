@@ -36,12 +36,22 @@ export const metadata: Metadata = {
   },
 };
 
+// Applies the saved theme to <html> before paint, avoiding a flash of the default theme.
+const themeScript = `(function(){try{var t=localStorage.getItem('malee-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} h-full antialiased`}>
-      <body className="min-h-dvh">{children}</body>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${display.variable} ${sans.variable} h-full antialiased`}
+    >
+      <body className="min-h-dvh">
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        {children}
+      </body>
     </html>
   );
 }

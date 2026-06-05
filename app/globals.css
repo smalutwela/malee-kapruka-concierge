@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
-/* ---- Malee design tokens (warm Sri Lankan gifting palette) ---- */
+/* ---- Light theme tokens — Kapruka brand palette (deep purple + golden-yellow), the default ---- */
 @theme {
-  --color-cream: #faf6ee;
+  --color-cream: #f6f4fb;
   --color-card: #ffffff;
-  --color-ink: #221d17;
-  --color-muted: #7a6f5f;
-  --color-brand: #0f7a5f;
-  --color-brand-dark: #0a5743;
-  --color-accent: #e0922b;
-  --color-accent-soft: #fbe6cf;
-  --color-blush: #f6e3da;
-  --color-line: #ece2d2;
+  --color-ink: #221a37;
+  --color-muted: #6b6385;
+  --color-brand: #402970;
+  --color-brand-dark: #2e1c54;
+  --color-accent: #b88a00;
+  --color-accent-soft: #f9edc2;
+  --color-blush: #efe9f7;
+  --color-line: #e6e1f0;
 
   --font-display: var(--font-fraunces), Georgia, "Times New Roman", serif;
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
@@ -24,8 +24,8 @@ body {
 
 body {
   background:
-    radial-gradient(1100px 620px at 82% -12%, #fdeede 0%, transparent 60%),
-    radial-gradient(820px 520px at -12% 112%, #e3f1ea 0%, transparent 58%),
+    radial-gradient(1100px 600px at 82% -12%, #ece3fb 0%, transparent 60%),
+    radial-gradient(820px 520px at -12% 112%, #fbf3cf 0%, transparent 55%),
     var(--color-cream);
   background-attachment: fixed;
   color: var(--color-ink);
@@ -39,13 +39,13 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #e2d8c8;
+  background: #ddd5ec;
   border-radius: 9999px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #d4c8b4;
+  background: #cabfe2;
   background-clip: content-box;
 }
 
@@ -81,4 +81,65 @@ body {
   transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
   animation: shimmer 1.4s infinite;
+}
+
+/* ============================================================
+   Themes — override the @theme color tokens per data-theme.
+   Default (no attribute) is the Light theme (Kapruka brand palette) in @theme above.
+   ============================================================ */
+
+/* Warm: the original warm Sri Lankan gifting palette — green + saffron on cream */
+html[data-theme="warm"] {
+  --color-cream: #faf6ee;
+  --color-card: #ffffff;
+  --color-ink: #221d17;
+  --color-muted: #7a6f5f;
+  --color-brand: #0f7a5f;
+  --color-brand-dark: #0a5743;
+  --color-accent: #e0922b;
+  --color-accent-soft: #fbe6cf;
+  --color-blush: #f6e3da;
+  --color-line: #ece2d2;
+}
+html[data-theme="warm"] body {
+  background:
+    radial-gradient(1100px 620px at 82% -12%, #fdeede 0%, transparent 60%),
+    radial-gradient(820px 520px at -12% 112%, #e3f1ea 0%, transparent 58%),
+    var(--color-cream);
+}
+html[data-theme="warm"] ::-webkit-scrollbar-thumb {
+  background: #e2d8c8;
+  background-clip: content-box;
+}
+html[data-theme="warm"] ::-webkit-scrollbar-thumb:hover {
+  background: #d4c8b4;
+  background-clip: content-box;
+}
+
+/* Dark: a dark variant of the Light palette — deep violet charcoal with a bright violet + gold */
+html[data-theme="dark"] {
+  --color-cream: #141021;
+  --color-card: #211a31;
+  --color-ink: #efeaf7;
+  --color-muted: #9d93b3;
+  --color-brand: #9575e0;
+  --color-brand-dark: #8460d4;
+  --color-accent: #e6b84a;
+  --color-accent-soft: #382c14;
+  --color-blush: #251e35;
+  --color-line: #332a47;
+}
+html[data-theme="dark"] body {
+  background:
+    radial-gradient(1100px 620px at 82% -12%, #2a1f47 0%, transparent 60%),
+    radial-gradient(820px 520px at -12% 112%, #2a230f 0%, transparent 58%),
+    var(--color-cream);
+}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #3a3252;
+  background-clip: content-box;
+}
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #473d63;
+  background-clip: content-box;
 }

@@ -24,6 +24,7 @@ import type {
 } from "@/lib/types";
 import { cn, formatPrice } from "@/lib/utils";
 import { cartCount, cartSubtotal, useCart } from "@/lib/cart/store";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 /* part shapes we read off UIMessage.parts */
 type AnyPart = {
@@ -312,6 +313,7 @@ export function ChatShell() {
             <span className="hidden items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand-dark sm:flex">
               <span className="h-1.5 w-1.5 rounded-full bg-brand" /> Live catalogue
             </span>
+            <ThemeSwitcher />
             <CartButton onClick={() => setCartOpen(true)} />
           </div>
         </div>

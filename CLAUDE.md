@@ -33,7 +33,7 @@ Tool results stream back as typed UI parts; `components/chat.tsx` (`ToolView`) d
 | `lib/utils.ts` | `cn`, `formatPrice`, `resizeImage` (bumps the CDN `width=` segment) |
 | `components/chat.tsx` | `ChatShell`, message rendering, tool dispatch, welcome screen, composer, cart drawer |
 | `components/cards.tsx` | Product / delivery / order / tracking cards + `AddToGift`, `SmartImage` |
-| `app/globals.css` | Tailwind v4 theme tokens (warm Sri Lankan palette) + animations |
+| `app/globals.css` | Tailwind v4 theme tokens (Light/Dark/Warm; Light default = Kapruka brand palette) + animations |
 | `scripts/mcp-smoke.ts` | Live MCP integration test (`npm run mcp:test`) |
 
 ## Kapruka MCP — read before touching tools
