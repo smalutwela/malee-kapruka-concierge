@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { ArrowUp, Flower2, Gift, Loader2, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
+import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, ShoppingBag, Sparkles, Trash2, X } from "lucide-react";
 import {
   CategoryChips,
   DeliveryQuoteCard,
@@ -14,6 +14,7 @@ import {
   TrackingTimeline,
   type AskFn,
 } from "@/components/cards";
+import { AccountDrawer } from "@/components/account-drawer";
 import type {
   CategoryList,
   DeliveryQuote,
@@ -24,6 +25,9 @@ import type {
 } from "@/lib/types";
 import { cn, formatPrice } from "@/lib/utils";
 import { cartCount, cartSubtotal, useCart } from "@/lib/cart/store";
+import { useProfile } from "@/lib/profile/store";
+import { useOrders, type OrderLine } from "@/lib/orders/store";
+import { useCaptureOrders } from "@/lib/orders/capture";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { RichText } from "@/components/rich-text";
@@ -37,16 +41,31 @@ type AnyPart = {
   output?: unknown;
 };
 
-/* Occasion chips, in display order — labels come from the active locale. */
-const OCCASION_KEYS = [
-  "birthday",
-  "anniversary",
-  "avurudu",
-  "getWell",
-  "love",
-  "newBaby",
-  "justBecause",
+/* Shopping-mode chips, in display order — labels come from the active locale.
+   Everyday self-shopping leads; gifting is one mode among many. */
+const MODE_KEYS = [
+  "groceries",
+  "electronics",
+  "home",
+  "beauty",
+  "fashion",
+  "baby",
+  "gift",
 ] as const;
+
+/* The tool loop is presented as a small team of specialists at work, so the
+   experience feels like more than one search box. Each tool maps to the
+   specialist that "runs" it; Malee herself is the concierge who talks. */
+const SPECIALIST: Record<string, "shopper" | "logistics"> = {
+  searchProducts: "shopper",
+  getProduct: "shopper",
+  listCategories: "shopper",
+  listDeliveryCities: "logistics",
+  checkDelivery: "logistics",
+  createOrder: "logistics",
+  trackOrder: "logistics",
+};
+const SPECIALIST_EMOJI = { shopper: "🛍️", logistics: "🚚" } as const;
 
 function Avatar({ size = "md" }: { size?: "md" | "lg" }) {
   return (
@@ -169,13 +188,19 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
                 </p>
               );
             }
+            const spec = SPECIALIST[name];
             return (
               <div
                 key={i}
                 className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1.5 text-xs text-muted"
               >
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
-                {t.tools[name as keyof typeof t.tools] ?? t.tools.working}
+                {spec && (
+                  <span className="font-semibold text-ink">
+                    {SPECIALIST_EMOJI[spec]} {t.specialists[spec]}
+                  </span>
+                )}
+                <span>{t.tools[name as keyof typeof t.tools] ?? t.tools.working}</span>
               </div>
             );
           }
@@ -199,18 +224,15 @@ function Welcome({ onPick }: { onPick: AskFn }) {
       <p className="mt-2 max-w-md text-[15px] text-muted">{t.welcome.subtitle}</p>
 
       <div className="mt-6 flex flex-wrap justify-center gap-2">
-        {OCCASION_KEYS.map((key) => {
-          const label = t.welcome.occasions[key];
-          return (
-            <button
-              key={key}
-              onClick={() => onPick(t.prompts.occasion(label))}
-              className="rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
-            >
-              {label}
-            </button>
-          );
-        })}
+        {MODE_KEYS.map((key) => (
+          <button
+            key={key}
+            onClick={() => onPick(t.prompts.mode[key])}
+            className="rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
+          >
+            {t.welcome.modes[key]}
+          </button>
+        ))}
       </div>
 
       <div className="mt-8 grid w-full max-w-xl gap-2 sm:grid-cols-1">
@@ -220,7 +242,7 @@ function Welcome({ onPick }: { onPick: AskFn }) {
             onClick={() => onPick(ex)}
             className="group flex items-center gap-3 rounded-xl border border-line bg-card/70 px-4 py-3 text-left text-sm text-ink transition hover:border-brand hover:bg-card"
           >
-            <Flower2 className="h-4 w-4 shrink-0 text-accent" />
+            <Sparkles className="h-4 w-4 shrink-0 text-accent" />
             <span className="flex-1">&ldquo;{ex}&rdquo;</span>
             <ArrowUp className="h-4 w-4 rotate-45 text-muted transition group-hover:text-brand" />
           </button>
@@ -288,10 +310,37 @@ export function ChatShell() {
   });
   const busy = status === "submitted" || status === "streaming";
   const [cartOpen, setCartOpen] = useState(false);
-  // Send the live cart + chosen language with every turn so Malee orders the
-  // right items and replies in the shopper's language.
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  // The persisted stores skip auto-hydration (so the first client render matches
+  // the SSR HTML); rehydrate them once on mount instead.
+  useEffect(() => {
+    void useCart.persist.rehydrate();
+    void useProfile.persist.rehydrate();
+    void useOrders.persist.rehydrate();
+  }, []);
+
+  // Record every placed order to local history + seed saved details.
+  useCaptureOrders(messages);
+
+  // Send the live cart + saved details + chosen language with every turn, so
+  // Malee orders the right items, can reuse the shopper's details, and replies
+  // in their language.
   const ask: AskFn = (text) =>
-    void sendMessage({ text }, { body: { cart: useCart.getState().items, locale } });
+    void sendMessage(
+      { text },
+      { body: { cart: useCart.getState().items, locale, profile: useProfile.getState().details } },
+    );
+
+  // Reorder: refill the cart from a past order, then open the cart to review.
+  const reorder = (items: OrderLine[]) => {
+    const add = useCart.getState().add;
+    for (const i of items) {
+      add({ id: i.id, name: i.name, price: i.price, image: i.image, icingText: i.icingText }, i.quantity);
+    }
+    setAccountOpen(false);
+    setCartOpen(true);
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -315,6 +364,7 @@ export function ChatShell() {
             </span>
             <LocaleSwitcher />
             <ThemeSwitcher />
+            <AccountButton onClick={() => setAccountOpen(true)} />
             <CartButton onClick={() => setCartOpen(true)} />
           </div>
         </div>
@@ -362,7 +412,36 @@ export function ChatShell() {
           ask(t.prompts.checkout);
         }}
       />
+      <AccountDrawer
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        onReorder={reorder}
+        onTrack={() => {
+          setAccountOpen(false);
+          ask(t.prompts.track);
+        }}
+      />
     </div>
+  );
+}
+
+function AccountButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  const count = useOrders((s) => s.orders.length);
+  return (
+    <button
+      onClick={onClick}
+      aria-label={t.account.title}
+      className="relative flex h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand"
+    >
+      <Receipt className="h-4 w-4" />
+      <span className="hidden sm:inline">{t.account.open}</span>
+      {count > 0 && (
+        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1 text-[11px] font-bold text-white">
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -425,7 +504,7 @@ function CartDrawer({
         )}
       >
         <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <Gift className="h-4 w-4 text-brand" />
+          <ShoppingBag className="h-4 w-4 text-brand" />
           <span className="font-display text-lg">{t.cart.title}</span>
           <button
             onClick={onClose}
@@ -441,7 +520,7 @@ function CartDrawer({
             <ShoppingBag className="h-8 w-8 opacity-40" />
             <p className="text-sm">
               {t.cart.emptyPre}
-              <span className="font-medium text-ink">{t.cards.addToGift}</span>
+              <span className="font-medium text-ink">{t.cards.addToCart}</span>
               {t.cart.emptyPost}
             </p>
           </div>
@@ -508,7 +587,7 @@ function CartDrawer({
               onClick={onCheckout}
               className="flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
             >
-              <Gift className="h-4 w-4" /> {t.cart.checkout}
+              <ShoppingBag className="h-4 w-4" /> {t.cart.checkout}
             </button>
             <p className="mt-2 text-center text-[11px] text-muted">{t.cart.deliveryNote}</p>
           </div>

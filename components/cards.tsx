@@ -6,7 +6,6 @@ import {
   Clock,
   ExternalLink,
   Flower2,
-  Gift,
   Globe,
   MapPin,
   PackageCheck,
@@ -149,7 +148,7 @@ function GhostButton({
   );
 }
 
-function AddToGift({
+function AddToCart({
   item,
 }: {
   item: { id: string; name: string; price?: Money; image?: string | null };
@@ -175,7 +174,7 @@ function AddToGift({
         </>
       ) : (
         <>
-          <Gift className="h-3.5 w-3.5" /> {t.cards.addToGift}
+          <ShoppingBag className="h-3.5 w-3.5" /> {t.cards.addToCart}
         </>
       )}
     </button>
@@ -204,7 +203,7 @@ export function ProductCard({ product, onAsk }: { product: ProductSummary; onAsk
         <h3 className="font-display text-[15px] leading-snug line-clamp-2">{name}</h3>
         <Price price={price} compareAt={compare_at_price} className="mt-auto" />
         <div className="mt-1 flex flex-wrap gap-2">
-          <AddToGift item={{ id, name, price, image: image_url }} />
+          <AddToCart item={{ id, name, price, image: image_url }} />
           <GhostButton onClick={() => onAsk?.(t.prompts.productDetails(id, name))}>
             {t.cards.details}
           </GhostButton>
@@ -256,7 +255,7 @@ export function ProductDetailCard({ product }: { product: ProductDetail }) {
           </div>
         )}
         <div className="mt-2 flex flex-wrap gap-2">
-          <AddToGift item={{ id: product.id, name: product.name, price: product.price, image: hero }} />
+          <AddToCart item={{ id: product.id, name: product.name, price: product.price, image: hero }} />
           {product.url && (
             <a
               href={product.url}
@@ -394,6 +393,7 @@ export function OrderSummaryCard({ order }: { order: OrderConfirmation }) {
           <Clock className="h-3 w-3" />
           {expired ? t.cards.freshLink : t.cards.priceLocked(label)}
         </p>
+        <p className="text-center text-[11px] text-muted/80">{t.cards.guestCheckoutNote}</p>
       </div>
     </div>
   );

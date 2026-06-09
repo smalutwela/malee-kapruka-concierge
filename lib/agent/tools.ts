@@ -53,6 +53,77 @@ function dedupeById(res: unknown): unknown {
   return { ...r, results };
 }
 
+// Filler / shopping chatter we ignore when judging whether results match the
+// query — these words wouldn't appear in a product name anyway.
+const QUERY_STOPWORDS = new Set([
+  "the", "and", "for", "with", "any", "some", "this", "that", "kapruka",
+  "best", "good", "nice", "fresh", "brand", "branded", "quality",
+  "pack", "packet", "please", "want", "need", "looking",
+]);
+
+/** Meaningful query words (≥3 chars, not filler) to test result relevance against. */
+function significantTokens(q: string): string[] {
+  return Array.from(
+    new Set(
+      q
+        .toLowerCase()
+        .split(/[^a-z0-9]+/i)
+        .filter((w) => w.length >= 3 && !QUERY_STOPWORDS.has(w)),
+    ),
+  );
+}
+
+/** On-topic if any significant query word appears (whole-word) in the name or category. */
+function onTopic(result: unknown, tokens: string[]): boolean {
+  const r = result as { name?: unknown; category?: { name?: unknown } };
+  const name = typeof r?.name === "string" ? r.name : "";
+  const cat = r?.category && typeof r.category.name === "string" ? r.category.name : "";
+  const hay = `${name} ${cat}`.toLowerCase();
+  return tokens.some((t) => new RegExp(`\\b${t}\\b`).test(hay));
+}
+
+/**
+ * Kapruka's search is fuzzy: a rare or over-specific query (e.g. "samba rice")
+ * can come back as a few unrelated popular items (chocolate hampers) instead of
+ * nothing — which would then render as product cards verbatim. When NONE of the
+ * results share a meaningful word with the query, treat it as a miss: return an
+ * empty set + a note so the model retries with a simpler word, rather than
+ * surfacing junk. Conservative — only triggers on a TOTAL mismatch, so normal
+ * and gift searches (whose head noun appears in the names) pass through untouched.
+ */
+function dropIrrelevant(res: unknown, q: string): unknown {
+  if (!res || typeof res !== "object") return res;
+  const r = res as { results?: unknown[] };
+  if (!Array.isArray(r.results) || r.results.length === 0) return res;
+  const tokens = significantTokens(q);
+  if (tokens.length === 0) return res; // nothing specific to match on — leave as-is
+  if (r.results.some((item) => onTopic(item, tokens))) return res; // at least one real hit
+  return {
+    results: [],
+    note: `Search returned only unrelated items for "${q}". Retry with a simpler, single-word product name.`,
+  };
+}
+
+/**
+ * Strip product `url`s from search results before they reach the model. The
+ * search cards (ProductGrid/ProductCard) never use them, but a weak model will
+ * happily paste them as markdown links in chat — redundant next to the cards and
+ * against the "never hand out product URLs" rule. getProduct keeps its url for
+ * the detail card's "View on Kapruka" link; only the noisy list view is stripped.
+ */
+function stripResultUrls(res: unknown): unknown {
+  if (!res || typeof res !== "object") return res;
+  const r = res as { results?: unknown[] };
+  if (!Array.isArray(r.results)) return res;
+  const results = r.results.map((p) => {
+    if (!p || typeof p !== "object") return p;
+    const clone = { ...(p as Record<string, unknown>) };
+    delete clone.url;
+    return clone;
+  });
+  return { ...r, results };
+}
+
 const currency = z
   .string()
   .default("LKR")
@@ -61,7 +132,7 @@ const currency = z
 export const kaprukaTools = {
   searchProducts: tool({
     description:
-      "Search Kapruka's live catalogue. Call this whenever the shopper wants to find or browse gifts. Use specific, descriptive queries (e.g. 'red roses bouquet', 'birthday chocolate box') rather than single vague words — vague queries can return nothing. Results render as product cards in the UI.",
+      "Search Kapruka's live catalogue. Call this whenever the shopper wants to find or browse anything — groceries, electronics, home, fashion, beauty, gifts and more. Use specific, descriptive queries (e.g. 'basmati rice 5kg', 'wireless earbuds', 'red roses bouquet') rather than single vague words — vague queries can return nothing. Results render as product cards in the UI.",
     inputSchema: z.object({
       q: z.string().min(3).describe("Descriptive search query, at least 3 characters."),
       category: z
@@ -94,7 +165,7 @@ export const kaprukaTools = {
       if (isEmptyResult(res) && category) {
         res = await run("kapruka_search_products", base);
       }
-      return dedupeById(res);
+      return stripResultUrls(dropIrrelevant(dedupeById(res), q));
     },
   }),
 
