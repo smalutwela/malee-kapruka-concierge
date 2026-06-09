@@ -411,6 +411,10 @@ export function ChatShell() {
           setCartOpen(false);
           ask(t.prompts.checkout);
         }}
+        onSuggest={() => {
+          setCartOpen(false);
+          ask(t.prompts.pairWithCart);
+        }}
       />
       <AccountDrawer
         open={accountOpen}
@@ -469,10 +473,12 @@ function CartDrawer({
   open,
   onClose,
   onCheckout,
+  onSuggest,
 }: {
   open: boolean;
   onClose: () => void;
   onCheckout: () => void;
+  onSuggest: () => void;
 }) {
   const t = useT();
   const items = useCart((s) => s.items);
@@ -583,6 +589,12 @@ function CartDrawer({
                 {formatPrice(subtotal, currency)}
               </span>
             </div>
+            <button
+              onClick={onSuggest}
+              className="mb-2 flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-xs font-semibold text-ink transition hover:border-brand hover:text-brand-dark"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.cart.suggestAddons}
+            </button>
             <button
               onClick={onCheckout}
               className="flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"

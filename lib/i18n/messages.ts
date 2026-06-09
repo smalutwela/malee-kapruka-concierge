@@ -86,6 +86,7 @@ const en = {
     subtotal: "Subtotal",
     checkout: "Continue to delivery",
     deliveryNote: "+ delivery, calculated next",
+    suggestAddons: "What goes well with this?",
   },
   // Order history + saved buyer details (the account drawer). Stored only in
   // the browser; powers one-tap reordering and faster repeat checkout.
@@ -160,6 +161,7 @@ const en = {
     categoryIdeas: (name: string) => `Show me some ${name}.`,
     checkout: "I'm ready to check out — let's do it.",
     track: "I'd like to track an order.",
+    pairWithCart: "What goes well with what's in my cart? Suggest a couple of add-ons.",
   },
 };
 
@@ -233,6 +235,7 @@ const si: Messages = {
     subtotal: "උප එකතුව",
     checkout: "බෙදාහැරීමට යමු",
     deliveryNote: "+ බෙදාහැරීම, මීළඟට ගණනය වේ",
+    suggestAddons: "මේවාට ගැලපෙන්නේ මොනවද?",
   },
   account: {
     title: "ඔබේ ඇණවුම් සහ විස්තර",
@@ -302,6 +305,7 @@ const si: Messages = {
     categoryIdeas: (name: string) => `${name} ටිකක් පෙන්වන්න.`,
     checkout: "මම ඇණවුම සම්පූර්ණ කරන්න සූදානම් — අපි කරමු.",
     track: "මට ඇණවුමක් සොයන්න ඕන.",
+    pairWithCart: "මගේ කරත්තයේ තියෙන දේවලට ගැලපෙන දේවල් මොනවද? එකතු කරන්න දේවල් කීපයක් යෝජනා කරන්න.",
   },
 };
 
@@ -373,6 +377,7 @@ const ta: Messages = {
     subtotal: "கூட்டுத்தொகை",
     checkout: "விநியோகத்திற்கு தொடரவும்",
     deliveryNote: "+ விநியோகம், அடுத்து கணக்கிடப்படும்",
+    suggestAddons: "இதனுடன் எது பொருந்தும்?",
   },
   account: {
     title: "உங்கள் ஆர்டர்கள் & விவரங்கள்",
@@ -442,6 +447,7 @@ const ta: Messages = {
     categoryIdeas: (name: string) => `சில ${name} காட்டுங்கள்.`,
     checkout: "நான் செக் அவுட் செய்யத் தயார் — செய்வோம்.",
     track: "நான் ஒரு ஆர்டரைக் கண்காணிக்க விரும்புகிறேன்.",
+    pairWithCart: "என் வண்டியில் உள்ளவற்றுடன் எது பொருந்தும்? சேர்க்க சில பொருட்களைப் பரிந்துரைக்கவும்.",
   },
 };
 
