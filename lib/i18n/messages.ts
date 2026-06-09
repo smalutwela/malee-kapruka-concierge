@@ -20,6 +20,7 @@ const en = {
   controls: {
     changeTheme: "Change theme",
     changeLanguage: "Change language",
+    newChat: "New chat",
     send: "Send",
     openCart: "Open your cart",
     close: "Close",
@@ -175,6 +176,7 @@ const si: Messages = {
   controls: {
     changeTheme: "තේමාව වෙනස් කරන්න",
     changeLanguage: "භාෂාව වෙනස් කරන්න",
+    newChat: "අලුත් කතාබහක්",
     send: "යවන්න",
     openCart: "ඔබේ කරත්තය විවෘත කරන්න",
     close: "වසන්න",
@@ -317,6 +319,7 @@ const ta: Messages = {
   controls: {
     changeTheme: "தீம் மாற்று",
     changeLanguage: "மொழியை மாற்று",
+    newChat: "புதிய அரட்டை",
     send: "அனுப்பு",
     openCart: "உங்கள் வண்டியைத் திற",
     close: "மூடு",
