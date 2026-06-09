@@ -12,7 +12,8 @@ interface CreateOrderInput {
   cart?: { productId: string; quantity?: number; icingText?: string }[];
   recipient?: { name?: string; phone?: string };
   delivery?: { address?: string; city?: string; date?: string };
-  sender?: { name?: string };
+  sender?: { name?: string; anonymous?: boolean };
+  giftMessage?: string;
 }
 
 type ToolPart = {
@@ -68,12 +69,27 @@ export function useCaptureOrders(messages: UIMessage[]): void {
           deliveryDate: input.delivery?.date,
         });
 
-        useProfile.getState().seed({
-          name: input.recipient?.name ?? input.sender?.name ?? "",
-          phone: input.recipient?.phone ?? "",
-          address: input.delivery?.address ?? "",
-          city: input.delivery?.city ?? "",
-        });
+        // Only seed the saved profile from a self-purchase — never from a gift to
+        // someone else, or we'd store the recipient's details as the shopper's.
+        const giftMessage = input.giftMessage?.trim();
+        const senderName = input.sender?.name?.trim();
+        const recipientName = input.recipient?.name?.trim();
+        const looksLikeGift =
+          Boolean(giftMessage) ||
+          Boolean(input.sender?.anonymous) ||
+          Boolean(
+            senderName &&
+              recipientName &&
+              senderName.toLowerCase() !== recipientName.toLowerCase(),
+          );
+        if (!looksLikeGift) {
+          useProfile.getState().seed({
+            name: recipientName ?? senderName ?? "",
+            phone: input.recipient?.phone ?? "",
+            address: input.delivery?.address ?? "",
+            city: input.delivery?.city ?? "",
+          });
+        }
       }
     }
   }, [messages]);
