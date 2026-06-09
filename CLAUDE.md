@@ -39,7 +39,7 @@ Tool results stream back as typed UI parts; `components/chat.tsx` (`ToolView`) d
 | `components/cards.tsx` | Product / delivery / order / tracking cards + `AddToCart`, `SmartImage` |
 | `components/account-drawer.tsx` | Saved-details editor + order history with one-tap **Reorder** / Pay / Track |
 | `components/rich-text.tsx` | Dependency-free inline Markdown-lite formatter (bold/italic/links) for Malee's chat messages — no Markdown library. Only http(s)/mailto links are linkified; a `[label](PRODUCT_ID)` from the model renders as just the label |
-| `app/globals.css` | Tailwind v4 theme tokens (Light/Dark/Warm; Light default = Kapruka brand palette) + animations + per-locale Sinhala/Tamil font stacks (`html[data-locale=…]`) |
+| `app/globals.css` | Tailwind v4 theme tokens (Dark default = deep violet charcoal; Light = Kapruka brand palette; Warm = green + saffron) + animations + per-locale Sinhala/Tamil font stacks (`html[data-locale=…]`) |
 | `scripts/mcp-smoke.ts` | Live MCP integration test (`npm run mcp:test`) |
 
 ## Kapruka MCP — read before touching tools
