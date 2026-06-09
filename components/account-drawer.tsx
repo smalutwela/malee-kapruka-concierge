@@ -194,6 +194,7 @@ function Field({
     <input
       value={value}
       placeholder={placeholder}
+      aria-label={placeholder}
       onChange={(e) => onChange(e.target.value)}
       className="w-full rounded-lg border border-line bg-cream px-3 py-2 text-sm outline-none focus:border-brand"
     />
@@ -219,6 +220,7 @@ function TrackSection({ onTrack }: { onTrack: (orderNumber: string) => void }) {
         <input
           value={value}
           placeholder={t.account.trackPlaceholder}
+          aria-label={t.account.trackTitle}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {

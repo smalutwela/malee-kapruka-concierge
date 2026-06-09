@@ -273,7 +273,7 @@ export const kaprukaTools = {
 
   trackOrder: tool({
     description:
-      "Look up the status and delivery progress of a Kapruka order by its order number (from the confirmation email after payment — NOT the pre-payment order_ref).",
+      "Look up the status and delivery progress of a Kapruka order by its order number (from the confirmation email after payment — NOT the pre-payment order_ref). Only call this once the shopper has actually given you the order number; if you don't have it yet, ask for it first rather than calling with a guessed or empty value.",
     inputSchema: z.object({
       orderNumber: z.string().min(4).max(40).describe("Kapruka order number, e.g. 'VIMP34456CB2'."),
     }),
