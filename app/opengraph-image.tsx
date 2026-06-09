@@ -17,7 +17,7 @@ export default function OpengraphImage() {
           justifyContent: "center",
           padding: "90px",
           color: "#ffffff",
-          background: "linear-gradient(135deg, #0f7a5f 0%, #0c6b52 60%, #e0922b 100%)",
+          background: "linear-gradient(135deg, #1b1430 0%, #2a1f47 55%, #322611 100%)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center" }}>
