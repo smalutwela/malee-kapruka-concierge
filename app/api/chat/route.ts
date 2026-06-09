@@ -45,21 +45,41 @@ type CartLine = {
 };
 
 function cartContext(cart?: CartLine[]): string {
-  if (!cart?.length) return "The shopper's gift cart is currently empty.";
+  if (!cart?.length) return "The shopper's cart is currently empty.";
   const lines = cart.map(
     (i) =>
       `- ${i.quantity}× ${i.name} (product_id: ${i.id})` +
       (i.icingText ? ` [cake icing: "${i.icingText}"]` : "") +
       (i.price?.amount != null ? ` — Rs ${i.price.amount}` : ""),
   );
-  return `The shopper's current gift cart — use these exact product_ids and quantities to create the order:\n${lines.join("\n")}`;
+  return `The shopper's current cart — use these exact product_ids and quantities to create the order:\n${lines.join("\n")}`;
+}
+
+type Profile = { name?: string; phone?: string; address?: string; city?: string } | null;
+
+/**
+ * Saved contact + delivery details (browser-stored). Lets Malee skip re-asking
+ * on a repeat/self purchase — the friction-killer Kapruka wants. She still must
+ * confirm them and must collect fresh details for a gift to someone else.
+ */
+function profileContext(profile?: Profile): string {
+  if (!profile) return "";
+  const parts = [
+    profile.name ? `Name: ${profile.name}` : "",
+    profile.phone ? `Phone: ${profile.phone}` : "",
+    profile.address ? `Address: ${profile.address}` : "",
+    profile.city ? `City: ${profile.city}` : "",
+  ].filter(Boolean);
+  if (!parts.length) return "";
+  return `The shopper has saved details — for a repeat or self-purchase, offer to reuse them (let them confirm or change anything); for a gift to someone else, collect the recipient's details fresh:\n${parts.join("\n")}`;
 }
 
 export async function POST(req: Request) {
-  const { messages, cart, locale } = (await req.json()) as {
+  const { messages, cart, locale, profile } = (await req.json()) as {
     messages: UIMessage[];
     cart?: CartLine[];
     locale?: string;
+    profile?: Profile;
   };
 
   // colombo date + cart summary + (for si/ta) a "reply in this language" note,
@@ -69,6 +89,7 @@ export async function POST(req: Request) {
   const context = [
     colomboContext(),
     cartContext(cart),
+    profileContext(profile),
     localeContext(normalizeLocale(locale)),
     underway
       ? 'The conversation is already underway — do NOT greet or say "Ayubowan" again; reply straight to the point.'

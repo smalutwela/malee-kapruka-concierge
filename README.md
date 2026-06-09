@@ -1,6 +1,6 @@
-# 🌸 Malee — Kapruka Gift Concierge
+# 🌸 Malee — Kapruka Shopping Concierge
 
-> **Ayubowan!** Malee is a warm, full-screen AI shopping concierge that helps you find and send the perfect gift anywhere in Sri Lanka — flowers, cakes, chocolates and more — chatting over the **live Kapruka catalogue**, quoting delivery, and placing guest orders with a click-to-pay link.
+> **Ayubowan!** Malee is a warm, full-screen AI shopping concierge for everything Kapruka sells — groceries, electronics, home, fashion, beauty, and the perfect gift to send — chatting over the **live Kapruka catalogue**, quoting delivery, and placing guest orders with a click-to-pay link. Most people shop for themselves; gifting is one beloved mode.
 
 Built for the **[Kapruka Agent Challenge](https://www.kapruka.com/contactUs/agentChallenge.html)** on the free [Kapruka MCP server](https://mcp.kapruka.com).
 
@@ -10,23 +10,24 @@ Built for the **[Kapruka Agent Challenge](https://www.kapruka.com/contactUs/agen
 
 ## What it does
 
-- **Full-screen chat concierge** (not a widget) with a distinct persona — "Malee", a thoughtful Sri Lankan gifting host.
+- **Full-screen chat concierge** (not a widget) with a distinct persona — "Malee", a thoughtful Sri Lankan shopping host who reads the situation and has an opinion.
 - **Live catalogue, no mock data** — every product, price, image, delivery rate and order comes from the real Kapruka MCP server.
 - **Rich generative UI** — tool results stream in as product cards, a delivery-quote card, an order summary, and an order-tracking timeline.
-- **Persistent gift cart** — add items from any card, adjust quantities, and check out.
+- **A visible team of specialists** — as Malee talks, a 🛍️ Shopper and 🚚 Logistics agent visibly work the catalogue and delivery behind her.
+- **Persistent cart** — add items from any card, adjust quantities, and check out.
 - **Complete, guided checkout** — Malee validates the delivery city + date, quotes the flat fee, surfaces freshness warnings for perishables (cakes/flowers), shows an order summary, confirms, then returns a **click-to-pay link** (60-minute price lock).
 - **Order tracking** — paste a Kapruka order number to see status + a delivery timeline.
-- **Speaks your language** — understands and replies in **English, Sinhala, or Tanglish**.
+- **Speaks your language** — understands and replies in **English, Sinhala, Tamil**, or romanised **"Singlish"/"Tanglish"**.
 
 ### Maps to the challenge rubric
 | Criterion | How Malee delivers |
 |---|---|
 | Experience & Polish | Streaming replies, typing/working indicators, skeletons, graceful empty/error states, mobile-friendly |
 | Visual Richness | Live product imagery, price/stock/ships-worldwide badges, animated cards, warm Sri Lankan palette + display serif |
-| Personality | "Malee" — warm, local, gifting-savvy; greets with Ayubowan, gentle tasteful upsell |
-| Usefulness | Occasion-led discovery, smart search recovery, honest guidance |
+| Personality | "Malee" — warm, local, opinionated; reads the situation, shops for you or helps you gift, greets with Ayubowan |
+| Usefulness | Everyday + occasion-led discovery, smart search recovery, honest opinions |
 | End-to-End Completeness | Search → detail → cart → delivery quote → confirm → pay link → track |
-| Creativity / Bonuses | Multi-item carts, gift messaging, cake icing text, delivery-date constraints, **Sinhala/Tanglish** |
+| Creativity / Bonuses | Visible specialist agents (Shopper/Logistics), multi-item carts, gift messaging, cake icing text, delivery-date constraints, **Sinhala/Tanglish** |
 
 ---
 

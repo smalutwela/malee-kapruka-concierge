@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 // Social share card (used for Open Graph + Twitter), rendered to PNG at build.
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "Malee — your Kapruka gift concierge";
+export const alt = "Malee — your Kapruka shopping concierge";
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -34,7 +34,7 @@ export default function OpengraphImage() {
           <div style={{ fontSize: "94px", fontWeight: 700, letterSpacing: "-3px" }}>Malee</div>
         </div>
         <div style={{ display: "flex", fontSize: "46px", fontWeight: 600, marginTop: "30px" }}>
-          Your Kapruka gift concierge
+          Your Kapruka shopping concierge
         </div>
         <div
           style={{
@@ -45,8 +45,8 @@ export default function OpengraphImage() {
             maxWidth: "960px",
           }}
         >
-          Ayubowan! Find and send the perfect gift anywhere in Sri Lanka — flowers, cakes,
-          chocolates and more, delivered.
+          Ayubowan! Shop groceries, gadgets, home and beauty — or send the perfect gift,
+          delivered anywhere in Sri Lanka.
         </div>
       </div>
     ),
