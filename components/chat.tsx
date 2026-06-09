@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, ShoppingBag, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, ShoppingBag, Sparkles, SquarePen, Trash2, X } from "lucide-react";
 import {
   CategoryChips,
   DeliveryQuoteCard,
@@ -66,6 +66,11 @@ const SPECIALIST: Record<string, "shopper" | "logistics"> = {
   trackOrder: "logistics",
 };
 const SPECIALIST_EMOJI = { shopper: "🛍️", logistics: "🚚" } as const;
+
+/* The conversation is persisted to localStorage so a refresh resumes where the
+   shopper left off — completing the "never lose your place" experience alongside
+   the persisted cart, profile, and order history. */
+const CHAT_STORAGE_KEY = "malee-chat";
 
 function Avatar({ size = "md" }: { size?: "md" | "lg" }) {
   return (
@@ -305,12 +310,13 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
 export function ChatShell() {
   const t = useT();
   const { locale } = useLocale();
-  const { messages, sendMessage, status, error, regenerate } = useChat({
+  const { messages, sendMessage, setMessages, status, error, regenerate } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
   const busy = status === "submitted" || status === "streaming";
   const [cartOpen, setCartOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   // The persisted stores skip auto-hydration (so the first client render matches
   // the SSR HTML); rehydrate them once on mount instead.
@@ -319,6 +325,33 @@ export function ChatShell() {
     void useProfile.persist.rehydrate();
     void useOrders.persist.rehydrate();
   }, []);
+
+  // Restore the saved transcript once on mount (after SSR paint, like the stores
+  // above — so the first render matches the server HTML and there's no mismatch).
+  useEffect(() => {
+    const restore = () => {
+      try {
+        const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+        const saved = raw ? (JSON.parse(raw) as UIMessage[]) : [];
+        if (Array.isArray(saved) && saved.length) setMessages(saved);
+      } catch {
+        /* corrupt or unavailable storage — start fresh */
+      }
+      setHydrated(true);
+    };
+    restore();
+  }, [setMessages]);
+
+  // Persist the transcript after each settled turn (skip per-token mid-stream writes).
+  useEffect(() => {
+    if (!hydrated || busy) return;
+    try {
+      if (messages.length) localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+      else localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch {
+      /* quota exceeded or unavailable — ignore */
+    }
+  }, [messages, busy, hydrated]);
 
   // Record every placed order to local history + seed saved details.
   useCaptureOrders(messages);
@@ -340,6 +373,16 @@ export function ChatShell() {
     }
     setAccountOpen(false);
     setCartOpen(true);
+  };
+
+  // Start a fresh conversation — clears only the chat; cart, profile, and orders persist.
+  const newChat = () => {
+    setMessages([]);
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   };
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -364,6 +407,7 @@ export function ChatShell() {
             </span>
             <LocaleSwitcher />
             <ThemeSwitcher />
+            {messages.length > 0 && <NewChatButton onClick={newChat} />}
             <AccountButton onClick={() => setAccountOpen(true)} />
             <CartButton onClick={() => setCartOpen(true)} />
           </div>
@@ -426,6 +470,20 @@ export function ChatShell() {
         }}
       />
     </div>
+  );
+}
+
+function NewChatButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  return (
+    <button
+      onClick={onClick}
+      aria-label={t.controls.newChat}
+      title={t.controls.newChat}
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-card text-ink transition hover:border-brand"
+    >
+      <SquarePen className="h-4 w-4" />
+    </button>
   );
 }
 
