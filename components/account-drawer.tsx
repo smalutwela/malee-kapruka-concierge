@@ -44,12 +44,12 @@ export function AccountDrawer({
   open,
   onClose,
   onReorder,
-  onTrack,
+  onTrackNumber,
 }: {
   open: boolean;
   onClose: () => void;
   onReorder: (items: OrderLine[]) => void;
-  onTrack: () => void;
+  onTrackNumber: (orderNumber: string) => void;
 }) {
   const t = useT();
   const orders = useOrders((s) => s.orders);
@@ -87,12 +87,8 @@ export function AccountDrawer({
 
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
           <DetailsSection />
-          <OrdersSection
-            orders={orders}
-            onReorder={onReorder}
-            onTrack={onTrack}
-            onClearOrders={clearOrders}
-          />
+          <TrackSection onTrack={onTrackNumber} />
+          <OrdersSection orders={orders} onReorder={onReorder} onClearOrders={clearOrders} />
         </div>
       </aside>
     </div>
@@ -204,15 +200,53 @@ function Field({
   );
 }
 
+function TrackSection({ onTrack }: { onTrack: (orderNumber: string) => void }) {
+  const t = useT();
+  const [value, setValue] = useState("");
+  function submit() {
+    const num = value.trim();
+    if (!num) return;
+    onTrack(num);
+    setValue("");
+  }
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <Truck className="h-4 w-4 text-brand" />
+        <h3 className="font-display text-sm font-semibold">{t.account.trackTitle}</h3>
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={value}
+          placeholder={t.account.trackPlaceholder}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          className="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 text-sm outline-none focus:border-brand"
+        />
+        <button
+          onClick={submit}
+          disabled={!value.trim()}
+          className="shrink-0 rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-dark disabled:opacity-40"
+        >
+          {t.account.track}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function OrdersSection({
   orders,
   onReorder,
-  onTrack,
   onClearOrders,
 }: {
   orders: OrderRecord[];
   onReorder: (items: OrderLine[]) => void;
-  onTrack: () => void;
   onClearOrders: () => void;
 }) {
   const t = useT();
@@ -238,7 +272,7 @@ function OrdersSection({
       ) : (
         <div className="space-y-3">
           {orders.map((o) => (
-            <OrderCard key={o.orderRef} order={o} onReorder={onReorder} onTrack={onTrack} />
+            <OrderCard key={o.orderRef} order={o} onReorder={onReorder} />
           ))}
         </div>
       )}
@@ -249,11 +283,9 @@ function OrdersSection({
 function OrderCard({
   order,
   onReorder,
-  onTrack,
 }: {
   order: OrderRecord;
   onReorder: (items: OrderLine[]) => void;
-  onTrack: () => void;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -305,12 +337,6 @@ function OrderCard({
             <ShoppingBag className="h-3.5 w-3.5" /> {t.account.pay} <ExternalLink className="h-3 w-3" />
           </a>
         )}
-        <button
-          onClick={onTrack}
-          className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-black/5"
-        >
-          <Truck className="h-3.5 w-3.5" /> {t.account.track}
-        </button>
       </div>
     </div>
   );

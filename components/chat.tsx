@@ -464,9 +464,9 @@ export function ChatShell() {
         open={accountOpen}
         onClose={() => setAccountOpen(false)}
         onReorder={reorder}
-        onTrack={() => {
+        onTrackNumber={(orderNumber) => {
           setAccountOpen(false);
-          ask(t.prompts.track);
+          ask(t.prompts.trackNumber(orderNumber));
         }}
       />
     </div>
