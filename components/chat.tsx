@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, ShoppingBag, Sparkles, SquarePen, Trash2, X } from "lucide-react";
+import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, RotateCcw, ShoppingBag, Sparkles, SquarePen, Trash2, X } from "lucide-react";
 import {
   CategoryChips,
   DeliveryQuoteCard,
@@ -17,6 +17,7 @@ import {
 import { AccountDrawer } from "@/components/account-drawer";
 import type {
   CategoryList,
+  CreateOrderToolInput,
   DeliveryQuote,
   OrderConfirmation,
   OrderTracking,
@@ -32,12 +33,14 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { RichText } from "@/components/rich-text";
 import { useLocale, useT } from "@/lib/i18n/context";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
 
 /* part shapes we read off UIMessage.parts */
 type AnyPart = {
   type: string;
   text?: string;
   state?: string;
+  input?: unknown;
   output?: unknown;
 };
 
@@ -58,6 +61,7 @@ const MODE_KEYS = [
    specialist that "runs" it; Malee herself is the concierge who talks. */
 const SPECIALIST: Record<string, "shopper" | "logistics"> = {
   searchProducts: "shopper",
+  presentProducts: "shopper",
   getProduct: "shopper",
   listCategories: "shopper",
   listDeliveryCities: "logistics",
@@ -71,6 +75,25 @@ const SPECIALIST_EMOJI = { shopper: "🛍️", logistics: "🚚" } as const;
    shopper left off — completing the "never lose your place" experience alongside
    the persisted cart, profile, and order history. */
 const CHAT_STORAGE_KEY = "malee-chat";
+
+/* The transport builds the request body at SEND time, so every request —
+   including a "Try again" regenerate — carries the live cart, saved details,
+   and chosen language. (A per-sendMessage body would silently drop them on
+   regenerate.) The stores are read via getState(); the locale lives in this
+   module-scope holder, synced from context by ChatShell. */
+let currentLocale: Locale = DEFAULT_LOCALE;
+const chatTransport = new DefaultChatTransport<UIMessage>({
+  api: "/api/chat",
+  prepareSendMessagesRequest: ({ messages, body }) => ({
+    body: {
+      messages,
+      cart: useCart.getState().items,
+      locale: currentLocale,
+      profile: useProfile.getState().details,
+      ...body,
+    },
+  }),
+});
 
 function Avatar({ size = "md" }: { size?: "md" | "lg" }) {
   return (
@@ -94,7 +117,17 @@ function noteOf(output: unknown): { error?: string; note?: string } | null {
   return null;
 }
 
-function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAsk: AskFn }) {
+function ToolView({
+  name,
+  input,
+  output,
+  onAsk,
+}: {
+  name: string;
+  input: unknown;
+  output: unknown;
+  onAsk: AskFn;
+}) {
   const t = useT();
   const n = noteOf(output);
   if (n?.error) {
@@ -108,6 +141,9 @@ function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAs
 
   switch (name) {
     case "searchProducts":
+      // Private research for the model — cards render via presentProducts only.
+      return null;
+    case "presentProducts":
       return (output as SearchResults).results?.length ? (
         <ProductGrid data={output as SearchResults} onAsk={onAsk} />
       ) : null;
@@ -123,7 +159,10 @@ function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAs
       ) : null;
     case "createOrder":
       return (output as OrderConfirmation).checkout_url ? (
-        <OrderSummaryCard order={output as OrderConfirmation} />
+        <OrderSummaryCard
+          order={output as OrderConfirmation}
+          input={input as CreateOrderToolInput | undefined}
+        />
       ) : null;
     case "trackOrder":
       return (output as OrderTracking).order_number ? (
@@ -174,17 +213,21 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
       <Avatar />
       <div className="min-w-0 flex-1 space-y-2 pt-1">
         {parts.map((part, i) => {
-          if (part.type === "text" && part.text) {
+          if (part.type === "text" && part.text?.trim()) {
             return (
               <p key={i} className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
-                <RichText text={part.text} />
+                {/* trim: stray blank lines around a part otherwise render as a gap
+                    between the text and the cards that follow it */}
+                <RichText text={part.text.trim()} />
               </p>
             );
           }
           if (part.type.startsWith("tool-")) {
             const name = part.type.slice(5);
             if (part.state === "output-available") {
-              return <ToolView key={i} name={name} output={part.output} onAsk={onAsk} />;
+              return (
+                <ToolView key={i} name={name} input={part.input} output={part.output} onAsk={onAsk} />
+              );
             }
             if (part.state === "output-error") {
               return (
@@ -216,8 +259,11 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
   );
 }
 
-function Welcome({ onPick }: { onPick: AskFn }) {
+function Welcome({ onPick, onReorder }: { onPick: AskFn; onReorder: (items: OrderLine[]) => void }) {
   const t = useT();
+  // Reordering is the single most under-rated repeat-commerce lever — when this
+  // shopper has history, the fastest path to "my usual" sits right up front.
+  const lastOrder = useOrders((s) => s.orders[0]);
   return (
     <div className="animate-rise flex flex-col items-center px-2 pt-10 text-center sm:pt-16">
       <Avatar size="lg" />
@@ -228,7 +274,20 @@ function Welcome({ onPick }: { onPick: AskFn }) {
       </h2>
       <p className="mt-2 max-w-md text-[15px] text-muted">{t.welcome.subtitle}</p>
 
-      <div className="mt-6 flex flex-wrap justify-center gap-2">
+      {lastOrder && lastOrder.items.length > 0 && (
+        <button
+          onClick={() => onReorder(lastOrder.items)}
+          className="mt-6 flex max-w-md items-center gap-2.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-medium text-brand-dark shadow-sm transition hover:border-brand hover:bg-brand/15"
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" />
+          <span className="shrink-0">{t.welcome.reorderLast}</span>
+          <span className="min-w-0 truncate text-xs text-muted">
+            {lastOrder.items.map((i) => i.name).join(", ")}
+          </span>
+        </button>
+      )}
+
+      <div className={cn("flex flex-wrap justify-center gap-2", lastOrder ? "mt-4" : "mt-6")}>
         {MODE_KEYS.map((key) => (
           <button
             key={key}
@@ -310,8 +369,13 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
 export function ChatShell() {
   const t = useT();
   const { locale } = useLocale();
+
+  // Keep the module-scope transport's locale in sync with the UI language.
+  useEffect(() => {
+    currentLocale = locale;
+  }, [locale]);
   const { messages, sendMessage, setMessages, status, error, regenerate } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+    transport: chatTransport,
   });
   const busy = status === "submitted" || status === "streaming";
   const [cartOpen, setCartOpen] = useState(false);
@@ -319,17 +383,18 @@ export function ChatShell() {
   const [hydrated, setHydrated] = useState(false);
 
   // The persisted stores skip auto-hydration (so the first client render matches
-  // the SSR HTML); rehydrate them once on mount instead.
+  // the SSR HTML); rehydrate them once on mount, THEN restore the transcript.
+  // The order matters: order capture below dedupes against the orders store, so
+  // the store must be hydrated before a restored transcript is scanned —
+  // otherwise every past order would be re-captured (and re-clear the cart).
   useEffect(() => {
-    void useCart.persist.rehydrate();
-    void useProfile.persist.rehydrate();
-    void useOrders.persist.rehydrate();
-  }, []);
-
-  // Restore the saved transcript once on mount (after SSR paint, like the stores
-  // above — so the first render matches the server HTML and there's no mismatch).
-  useEffect(() => {
-    const restore = () => {
+    let cancelled = false;
+    void Promise.all([
+      useCart.persist.rehydrate(),
+      useProfile.persist.rehydrate(),
+      useOrders.persist.rehydrate(),
+    ]).then(() => {
+      if (cancelled) return;
       try {
         const raw = localStorage.getItem(CHAT_STORAGE_KEY);
         const saved = raw ? (JSON.parse(raw) as UIMessage[]) : [];
@@ -338,8 +403,10 @@ export function ChatShell() {
         /* corrupt or unavailable storage — start fresh */
       }
       setHydrated(true);
+    });
+    return () => {
+      cancelled = true;
     };
-    restore();
   }, [setMessages]);
 
   // Persist the transcript after each settled turn (skip per-token mid-stream writes).
@@ -353,17 +420,13 @@ export function ChatShell() {
     }
   }, [messages, busy, hydrated]);
 
-  // Record every placed order to local history + seed saved details.
-  useCaptureOrders(messages);
+  // Record every placed order to local history + seed saved details. Gated on
+  // hydration so a restored transcript is only scanned once the orders store
+  // can dedupe it.
+  useCaptureOrders(messages, hydrated);
 
-  // Send the live cart + saved details + chosen language with every turn, so
-  // Malee orders the right items, can reuse the shopper's details, and replies
-  // in their language.
-  const ask: AskFn = (text) =>
-    void sendMessage(
-      { text },
-      { body: { cart: useCart.getState().items, locale, profile: useProfile.getState().details } },
-    );
+  // The transport injects cart/locale/profile at request time (see above).
+  const ask: AskFn = (text) => void sendMessage({ text });
 
   // Reorder: refill the cart from a past order, then open the cart to review.
   const reorder = (items: OrderLine[]) => {
@@ -417,7 +480,7 @@ export function ChatShell() {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
           {messages.length === 0 ? (
-            <Welcome onPick={ask} />
+            <Welcome onPick={ask} onReorder={reorder} />
           ) : (
             messages.map((m) => <MessageView key={m.id} message={m} onAsk={ask} />)
           )}

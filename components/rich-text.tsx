@@ -75,6 +75,16 @@ function parse(text: string): ReactNode[] {
   return nodes;
 }
 
+// Models love "* item" / "- item" bullet lines; render the marker as a real
+// bullet instead of leaking raw asterisks. Indentation is preserved (the caller
+// renders with whitespace-pre-wrap), and "**bold" doesn't match because the
+// marker must be followed by whitespace.
+const BULLET_LINE = /^(\s*)[-*]\s+/;
+
 export function RichText({ text }: { text: string }) {
-  return <>{parse(text)}</>;
+  const withBullets = text
+    .split("\n")
+    .map((line) => line.replace(BULLET_LINE, "$1• "))
+    .join("\n");
+  return <>{parse(withBullets)}</>;
 }

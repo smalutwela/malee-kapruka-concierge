@@ -54,7 +54,9 @@ const en = {
       "Restock my kitchen — rice, dhal, tea and coconut milk",
       "A good blender under Rs 15,000",
       "My girlfriend just broke up with me — I want to send her flowers",
+      "Ammata birthday cake ekak yawanna ona — Kandy walata",
     ],
+    reorderLast: "Reorder my usual",
   },
   composer: {
     placeholder: "Message Malee… (e.g. restock my kitchen, or flowers for amma)",
@@ -63,6 +65,7 @@ const en = {
   },
   tools: {
     searchProducts: "Searching the Kapruka catalogue…",
+    presentProducts: "Picking the best options…",
     getProduct: "Fetching the details…",
     listCategories: "Browsing categories…",
     listDeliveryCities: "Looking up delivery areas…",
@@ -209,7 +212,9 @@ const si: Messages = {
       "මගේ කුස්සිය නැවත පුරවන්න — හාල්, පරිප්පු, තේ සහ පොල් කිරි",
       "රු. 15,000ට අඩු හොඳ බ්ලෙන්ඩරයක්",
       "මගේ ගර්ල්ෆ්‍රෙන්ඩ් මාත් එක්ක බිඳිලා — එයාට මල් යවන්න ඕන",
+      "අම්මට birthday cake එකක් යවන්න ඕන — නුවරට",
     ],
+    reorderLast: "පෙර ඇණවුම නැවත ගන්න",
   },
   composer: {
     placeholder: "Malee හට පණිවිඩයක්… (උදා: කුස්සිය පුරවන්න, නැත්නම් අම්මට මල්)",
@@ -218,6 +223,7 @@ const si: Messages = {
   },
   tools: {
     searchProducts: "Kapruka නාමාවලිය සොයමින්…",
+    presentProducts: "හොඳම තේරීම් තෝරමින්…",
     getProduct: "විස්තර ලබා ගනිමින්…",
     listCategories: "කාණ්ඩ බලමින්…",
     listDeliveryCities: "බෙදාහැරීම් ප්‍රදේශ සොයමින්…",
@@ -354,7 +360,9 @@ const ta: Messages = {
       "என் சமையலறையை நிரப்ப — அரிசி, பருப்பு, தேயிலை, தேங்காய் பால்",
       "ரூ. 15,000க்கு கீழ் ஒரு நல்ல பிளெண்டர்",
       "என் காதலியுடன் பிரிந்துவிட்டேன் — அவளுக்கு மலர்கள் அனுப்ப விரும்புகிறேன்",
+      "Ammava ku birthday cake onnu anuppanum — Kandy ku",
     ],
+    reorderLast: "முந்தைய ஆர்டரை மீண்டும்",
   },
   composer: {
     placeholder: "Malee க்கு செய்தி… (எ.கா: சமையலறையை நிரப்பு, அல்லது அம்மாவுக்கு மலர்கள்)",
@@ -363,6 +371,7 @@ const ta: Messages = {
   },
   tools: {
     searchProducts: "Kapruka பட்டியலில் தேடுகிறேன்…",
+    presentProducts: "சிறந்தவற்றைத் தேர்கிறேன்…",
     getProduct: "விவரங்களைப் பெறுகிறேன்…",
     listCategories: "வகைகளைப் பார்க்கிறேன்…",
     listDeliveryCities: "விநியோகப் பகுதிகளைத் தேடுகிறேன்…",

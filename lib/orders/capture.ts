@@ -5,16 +5,7 @@ import type { UIMessage } from "ai";
 import { useCart } from "@/lib/cart/store";
 import { useProfile } from "@/lib/profile/store";
 import { useOrders, type OrderLine } from "@/lib/orders/store";
-import type { OrderConfirmation } from "@/lib/types";
-
-/** Shape of the createOrder tool input the model sends (see lib/agent/tools.ts). */
-interface CreateOrderInput {
-  cart?: { productId: string; quantity?: number; icingText?: string }[];
-  recipient?: { name?: string; phone?: string };
-  delivery?: { address?: string; city?: string; date?: string };
-  sender?: { name?: string; anonymous?: boolean };
-  giftMessage?: string;
-}
+import type { CreateOrderToolInput, OrderConfirmation } from "@/lib/types";
 
 type ToolPart = {
   type: string;
@@ -25,30 +16,35 @@ type ToolPart = {
 
 /**
  * Watch the chat transcript and, whenever a createOrder tool call comes back
- * with a pay link, record it to local order history and seed the saved profile.
+ * with a pay link, record it to local order history, seed the saved profile,
+ * and clear the cart (the order is placed — a full cart would just confuse the
+ * next turn).
  *
  * The order's line items are taken from the tool *input* (the authoritative list
  * of what was actually ordered) and enriched with name/price/image from the live
- * cart by product id, so the history card and Reorder both have rich data even
- * if the cart is later edited. De-duped by order_ref in the store, so this is
- * safe to re-run on every render.
+ * cart by product id; for a direct order (empty cart) the model-provided line
+ * `name` is the fallback. De-duped by order_ref BEFORE any side effects, so
+ * re-running over a restored transcript never re-clears the cart — which is why
+ * `enabled` must only flip true after the orders store has rehydrated.
  */
-export function useCaptureOrders(messages: UIMessage[]): void {
+export function useCaptureOrders(messages: UIMessage[], enabled: boolean): void {
   useEffect(() => {
+    if (!enabled) return;
     for (const m of messages) {
       if (m.role !== "assistant") continue;
       for (const part of m.parts as ToolPart[]) {
         if (part.type !== "tool-createOrder" || part.state !== "output-available") continue;
         const out = part.output as OrderConfirmation | undefined;
         if (!out?.checkout_url || !out.order_ref) continue;
+        if (useOrders.getState().orders.some((o) => o.orderRef === out.order_ref)) continue;
 
-        const input = (part.input ?? {}) as CreateOrderInput;
+        const input = (part.input ?? {}) as CreateOrderToolInput;
         const cartItems = useCart.getState().items;
         const lines: OrderLine[] = (input.cart ?? []).map((line) => {
           const known = cartItems.find((c) => c.id === line.productId);
           return {
             id: line.productId,
-            name: known?.name ?? line.productId,
+            name: known?.name ?? line.name ?? line.productId,
             quantity: line.quantity ?? 1,
             price: known?.price,
             image: known?.image,
@@ -68,6 +64,11 @@ export function useCaptureOrders(messages: UIMessage[]): void {
           city: input.delivery?.city,
           deliveryDate: input.delivery?.date,
         });
+
+        // The order is placed — empty the cart so the next turn starts clean.
+        // (OrderSummaryCard reads its lines from the order record/tool input,
+        // not the live cart, so clearing here never blanks the receipt.)
+        if (cartItems.length) useCart.getState().clear();
 
         // Only seed the saved profile from a self-purchase — never from a gift to
         // someone else, or we'd store the recipient's details as the shopper's.
@@ -92,5 +93,5 @@ export function useCaptureOrders(messages: UIMessage[]): void {
         }
       }
     }
-  }, [messages]);
+  }, [messages, enabled]);
 }
