@@ -83,12 +83,19 @@ export interface OrderTracking {
   status_display?: string;
   order_date?: string;
   delivery_date?: string;
-  amount?: string;
+  /** Live API returns an object with a STRING value (e.g. {value:"4970",currency:"LKR"}). */
+  amount?: string | { value?: string | number; currency?: string };
+  /** Often junk (e.g. "0000") — only display when it reads like a word. */
   payment_method?: string;
   recipient?: { name: string; phone: string; address: string; city: string };
   greeting_message?: string | null;
   progress?: { step: string; timestamp: string }[];
-  items?: { product_id: string; name: string; quantity: number; selling_price: number }[];
+  items?: {
+    product_id: string;
+    name: string;
+    quantity: number;
+    selling_price: number | string | { value?: string | number; currency?: string };
+  }[];
 }
 
 export interface CategoryNode {
@@ -98,6 +105,19 @@ export interface CategoryNode {
 }
 export interface CategoryList {
   categories: CategoryNode[];
+}
+
+/**
+ * Shape of the createOrder tool *input* the model sends (camelCase — mirrors
+ * the Zod schema in lib/agent/tools.ts). Read client-side from the tool part to
+ * itemise the order card and capture order history.
+ */
+export interface CreateOrderToolInput {
+  cart?: { productId: string; name?: string; quantity?: number; icingText?: string }[];
+  recipient?: { name?: string; phone?: string };
+  delivery?: { address?: string; city?: string; date?: string };
+  sender?: { name?: string; anonymous?: boolean };
+  giftMessage?: string;
 }
 
 /** Fallback shape for empty/error tool results. */

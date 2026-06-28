@@ -16,9 +16,11 @@ import {
 } from "lucide-react";
 import { cn, formatPrice, resizeImage } from "@/lib/utils";
 import { useCart } from "@/lib/cart/store";
+import { useOrders } from "@/lib/orders/store";
 import { useT } from "@/lib/i18n/context";
 import type {
   CategoryList,
+  CreateOrderToolInput,
   DeliveryQuote,
   Money,
   OrderConfirmation,
@@ -227,10 +229,33 @@ export function ProductGrid({ data, onAsk }: { data: SearchResults; onAsk?: AskF
 
 export function ProductDetailCard({ product }: { product: ProductDetail }) {
   const t = useT();
-  const hero = resizeImage(product.images?.[0], 640) ?? product.images?.[0];
+  const images = product.images ?? [];
+  const [heroIdx, setHeroIdx] = useState(0);
+  const heroSrc = images[Math.min(heroIdx, Math.max(images.length - 1, 0))];
+  const hero = resizeImage(heroSrc, 640) ?? heroSrc;
   return (
     <div className="animate-rise my-2 overflow-hidden rounded-2xl border border-line bg-card shadow-sm sm:flex">
-      <SmartImage src={hero} alt={product.name} className="aspect-square w-full sm:w-56 sm:shrink-0" />
+      <div className="sm:w-56 sm:shrink-0">
+        {/* key remounts SmartImage per image so the loading skeleton resets */}
+        <SmartImage key={hero} src={hero} alt={product.name} className="aspect-square w-full" />
+        {images.length > 1 && (
+          <div className="flex gap-1.5 p-2">
+            {images.slice(0, 4).map((img, i) => (
+              <button
+                key={i}
+                onClick={() => setHeroIdx(i)}
+                aria-label={`${product.name} ${i + 1}`}
+                className={cn(
+                  "h-12 w-12 overflow-hidden rounded-lg border transition",
+                  i === heroIdx ? "border-brand ring-1 ring-brand" : "border-line opacity-70 hover:opacity-100",
+                )}
+              >
+                <SmartImage src={resizeImage(img, 128) ?? img} alt="" className="h-full w-full" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="flex flex-col gap-2 p-4">
         <div className="flex items-center gap-2">
           <StockBadge inStock={product.in_stock} level={product.stock_level} />
@@ -322,7 +347,9 @@ export function DeliveryQuoteCard({ quote }: { quote: DeliveryQuote }) {
 /* ----------------------------- order (pay link) ----------------------------- */
 
 function useCountdown(expiresAt?: string) {
-  const [remaining, setRemaining] = useState<number>(0);
+  // `remaining` starts unknown (null) and resolves after mount — Date.now can't
+  // run during render, and starting at 0 would flash "expired" on first paint.
+  const [remaining, setRemaining] = useState<number | null>(null);
   useEffect(() => {
     if (!expiresAt) return;
     const end = new Date(expiresAt).getTime();
@@ -331,20 +358,45 @@ function useCountdown(expiresAt?: string) {
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [expiresAt]);
-  const mins = Math.floor(remaining / 60000);
-  const secs = Math.floor((remaining % 60000) / 1000);
-  return { expired: remaining <= 0, label: `${mins}:${secs.toString().padStart(2, "0")}` };
+  const mins = Math.floor((remaining ?? 0) / 60000);
+  const secs = Math.floor(((remaining ?? 0) % 60000) / 1000);
+  return {
+    expired: remaining !== null && remaining <= 0,
+    label: remaining === null ? "…" : `${mins}:${secs.toString().padStart(2, "0")}`,
+  };
 }
 
-export function OrderSummaryCard({ order }: { order: OrderConfirmation }) {
+export function OrderSummaryCard({
+  order,
+  input,
+}: {
+  order: OrderConfirmation;
+  input?: CreateOrderToolInput;
+}) {
   const t = useT();
   const { expired, label } = useCountdown(order.expires_at);
   const s = order.summary;
-  // Snapshot the cart as it was when this card mounted, so the buyer sees
-  // exactly what they're paying for (name × qty) — Kapruka's pay page and the
-  // create_order response don't itemise. Snapshot, not live, so later cart
-  // edits never rewrite an order that's already placed.
-  const [lines] = useState(() => useCart.getState().items);
+  // Itemise what was ACTUALLY ordered — the createOrder response has totals
+  // only. The captured order record (lib/orders) is richest (names, prices,
+  // images survive reloads); until it lands, fall back to the tool input's
+  // cart lines enriched from the live cart, snapshotted at mount so later cart
+  // edits never rewrite a placed order.
+  const record = useOrders((st) => st.orders.find((o) => o.orderRef === order.order_ref));
+  const [fallbackLines] = useState(() => {
+    const cartItems = useCart.getState().items;
+    return (input?.cart ?? []).map((line) => {
+      const known = cartItems.find((c) => c.id === line.productId);
+      return {
+        id: line.productId,
+        name: known?.name ?? line.name ?? line.productId,
+        quantity: line.quantity ?? 1,
+        price: known?.price,
+      };
+    });
+  });
+  const lines = record?.items ?? fallbackLines;
+  const gift = input?.giftMessage?.trim();
+  const giftSender = input?.sender?.anonymous ? "Anonymous" : input?.sender?.name?.trim();
   return (
     <div className="animate-rise my-2 overflow-hidden rounded-2xl border border-brand/30 bg-card shadow-md">
       <div className="flex items-center gap-2 bg-brand px-4 py-2.5 text-white">
@@ -360,12 +412,20 @@ export function OrderSummaryCard({ order }: { order: OrderConfirmation }) {
                 <span className="line-clamp-2 min-w-0 flex-1 leading-snug text-muted">
                   <span className="font-semibold text-ink">{i.quantity}×</span> {i.name}
                 </span>
-                <span className="shrink-0 tabular-nums">
-                  {formatPrice((i.price?.amount ?? 0) * i.quantity, i.price?.currency ?? s.currency)}
-                </span>
+                {i.price?.amount != null && (
+                  <span className="shrink-0 tabular-nums">
+                    {formatPrice(i.price.amount * i.quantity, i.price.currency ?? s.currency)}
+                  </span>
+                )}
               </div>
             ))}
             <div className="my-1 border-t border-line" />
+          </div>
+        )}
+        {gift && (
+          <div className="rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
+            💌 “{gift}”
+            {giftSender ? <span className="opacity-80"> — {giftSender}</span> : null}
           </div>
         )}
         <Row label={t.cards.items} value={formatPrice(s.items_total, s.currency)} />
@@ -410,7 +470,51 @@ function Row({ label, value, emphasize }: { label: string; value: string; emphas
 
 /* ----------------------------- tracking ----------------------------- */
 
+/**
+ * Kapruka's tracking payload is loosely typed: money fields arrive as a plain
+ * string, a number, or {value, currency} with a STRING value. Normalize to a
+ * display string (or null to hide) — rendering the raw object crashes React.
+ */
+function moneyText(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === "string") return v.trim() || null;
+  if (typeof v === "number") return formatPrice(v);
+  if (typeof v === "object") {
+    const o = v as { value?: string | number; currency?: string };
+    const n = Number(o.value);
+    if (Number.isFinite(n)) return formatPrice(n, o.currency ?? "LKR");
+  }
+  return null;
+}
+
+/** Icon for a tracking step, keyed off the step's wording. */
+function stepIcon(step: string) {
+  const s = step.toLowerCase();
+  if (/(deliver|hand|received)/.test(s)) return PackageCheck;
+  if (/(dispatch|vehicle|transit|courier|out for|left|route|driver)/.test(s)) return Truck;
+  if (/(pack|prepar|process|bake|pick)/.test(s)) return ShoppingBag;
+  return Check; // placed / confirmed / paid
+}
+
+/**
+ * Kapruka's tracking is genuinely detailed ("from the time the vehicle left") —
+ * visualize it as a stepper: every reported step is done, the newest one is the
+ * live "current" stop, plus the order's items and key facts. The delivered
+ * state renders fully settled (no pulse).
+ */
 export function TrackingTimeline({ order }: { order: OrderTracking }) {
+  const t = useT();
+  const steps = order.progress ?? [];
+  const delivered = /deliver/i.test(`${order.status} ${order.status_display ?? ""}`);
+  const amount = moneyText(order.amount);
+  // payment_method is often a junk code ("0000") — show it only if it reads like a word.
+  const payment = /[a-z]/i.test(order.payment_method ?? "") ? order.payment_method : null;
+  const meta = [
+    order.delivery_date ? { icon: Truck, text: `${t.cards.delivery}: ${order.delivery_date}` } : null,
+    amount ? { icon: Sparkles, text: amount } : null,
+    payment ? { icon: Check, text: payment } : null,
+  ].filter(Boolean) as { icon: typeof Check; text: string }[];
+
   return (
     <div className="animate-rise my-2 rounded-2xl border border-line bg-card p-4 shadow-sm">
       <div className="flex items-center gap-2">
@@ -425,26 +529,63 @@ export function TrackingTimeline({ order }: { order: OrderTracking }) {
           <MapPin className="h-3.5 w-3.5" /> {order.recipient.name} · {order.recipient.city}
         </p>
       )}
-      {order.progress && order.progress.length > 0 && (
-        <ol className="mt-3 space-y-3">
-          {order.progress.map((step, i) => {
-            const done = i < order.progress!.length;
+      {meta.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {meta.map((m, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-muted"
+            >
+              <m.icon className="h-3 w-3" /> {m.text}
+            </span>
+          ))}
+        </div>
+      )}
+      {steps.length > 0 && (
+        <ol className="relative mt-4 space-y-0">
+          {steps.map((step, i) => {
+            const Icon = stepIcon(step.step);
+            const current = i === steps.length - 1 && !delivered;
+            const last = i === steps.length - 1;
             return (
-              <li key={i} className="flex gap-3">
+              <li key={i} className="relative flex gap-3 pb-4 last:pb-0">
+                {!last && (
+                  <span className="absolute left-[13px] top-7 h-[calc(100%-1.75rem)] w-0.5 bg-brand/30" />
+                )}
                 <span
                   className={cn(
-                    "mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full",
-                    done ? "bg-brand" : "bg-line",
+                    "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                    current ? "bg-brand text-white shadow-md" : "bg-brand/15 text-brand",
                   )}
-                />
-                <div className="text-sm">
-                  <div className="font-medium">{step.step}</div>
+                >
+                  {current && (
+                    <span className="absolute inset-0 animate-ping rounded-full bg-brand/40" />
+                  )}
+                  <Icon className="relative h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 pt-0.5 text-sm">
+                  <div className={cn("font-medium", current && "text-brand-dark")}>{step.step}</div>
                   <div className="text-xs text-muted">{step.timestamp}</div>
                 </div>
               </li>
             );
           })}
         </ol>
+      )}
+      {order.items && order.items.length > 0 && (
+        <div className="mt-3 space-y-1 border-t border-line pt-3 text-sm">
+          {order.items.map((i, idx) => {
+            const price = moneyText(i.selling_price);
+            return (
+              <div key={idx} className="flex items-start justify-between gap-3">
+                <span className="line-clamp-1 min-w-0 flex-1 text-muted">
+                  <span className="font-semibold text-ink">{i.quantity}×</span> {i.name}
+                </span>
+                {price && <span className="shrink-0 tabular-nums text-muted">{price}</span>}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
