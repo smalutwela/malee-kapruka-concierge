@@ -17,7 +17,7 @@ const sans = Plus_Jakarta_Sans({
   display: "swap",
 });
 
-const SITE_URL = "https://kapruka-ai-agent-claude.vercel.app";
+const SITE_URL = "https://malee-kapruka-agent.vercel.app";
 const DESCRIPTION =
   "Ayubowan! Malee is your warm AI shopping concierge for everything Kapruka sells — groceries, electronics, home, fashion, beauty, and the perfect gift to send, delivered anywhere in Sri Lanka. Powered by the live Kapruka catalogue.";
 
