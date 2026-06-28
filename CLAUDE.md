@@ -4,7 +4,7 @@
 
 ## Stack
 - **Next.js 16** (App Router) + React 19 + TypeScript
-- **Vercel AI SDK v6** (`ai`) with a provider-swappable model — `@ai-sdk/google` (default) or `@ai-sdk/anthropic`
+- **Vercel AI SDK v6** (`ai`) — **Claude primary** (`@ai-sdk/anthropic`) with an automatic **Gemini fallback** (`@ai-sdk/google`) on any error, via `ai-fallback`'s `createFallback`
 - **Tailwind CSS v4** (CSS `@theme` tokens, no `tailwind.config`), `lucide-react`, **Zustand**
 - A small, dependency-free **MCP client** (`lib/mcp.ts`) — JSON-RPC over Streamable HTTP
 
@@ -24,7 +24,7 @@ Tool results stream back as typed UI parts; `components/chat.tsx` (`ToolView`) d
 | Path | Responsibility |
 |---|---|
 | `app/api/chat/route.ts` | Chat endpoint: `streamText` + tool loop, per-turn date/cart context injection, graceful error mapping, **per-IP rate limit** (12/min, localized 429) + message/cart clamping (public-demo abuse guards) |
-| `lib/agent/model.ts` | Provider/model selection via env (`AI_PROVIDER`, `AGENT_MODEL`) |
+| `lib/agent/model.ts` | Model selection: **Claude primary + free-Gemini fallback** (`ai-fallback`'s `createFallback`, falls back on **any** Claude error); env escape hatches `AI_PROVIDER` / `AGENT_MODEL` |
 | `lib/agent/prompt.ts` | `SYSTEM_PROMPT` (Malee persona — a general shopping concierge with an opinion; gifting is one mode) + `colomboContext()` (per-turn date) + `localeContext()` (reply-language steer) |
 | `lib/agent/tools.ts` | 8 curated tools (clean Zod schemas → MCP `params` envelope). **Search results are private to the model** — only `presentProducts` (model-picked ids, served from a per-instance result stash with a `get_product` fallback) renders product cards |
 | `lib/mcp.ts` | MCP client: session lifecycle, SSE parse, JSON unwrap, re-init, rate-limit signalling, **read-only response cache** |
@@ -51,8 +51,8 @@ Tool results stream back as typed UI parts; `components/chat.tsx` (`ToolView`) d
 - **Response caching:** read-only tools are cached in-memory with a per-tool TTL (`READ_TTL_MS` in `lib/mcp.ts` — categories/cities 30 min, `get_product` 5 min, `search_products` 2 min), so repeat calls skip the network and the rate limit (Kapruka explicitly asks clients to cache). `create_order`/`track_order` are absent from the map, so never cached. The cache is module-scoped (per warm server instance).
 
 ## AI provider & model
-- Swap via env (`lib/agent/model.ts`): `AI_PROVIDER=google` (default) | `anthropic`; optional `AGENT_MODEL` to pin a model.
-- Default **`gemini-3.1-flash-lite`** — the most generous Gemini free tier (15 RPM / 500 RPD; 2.5-flash is only 5 RPM / 20 RPD). Switch to Claude with `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY` (default `claude-sonnet-4-6`).
+- **Default: Claude primary + Gemini fallback** (`lib/agent/model.ts`, via `ai-fallback`'s `createFallback`). When `ANTHROPIC_API_KEY` is set, the agent runs on **`claude-sonnet-4-6`** and transparently falls back to **`gemini-3.1-flash-lite`** (free tier: 15 RPM / 500 RPD) on **any** Claude error — credit-balance/billing cap, 429, model-unavailable, network. Two `createFallback` defaults are overridden: `shouldRetryThisError: () => true` (the built-in retry list misses Anthropic's credit-balance 400 — the budget case we most care about), and `retryAfterOutput: false` (don't replay a half-streamed answer on Gemini; a mid-stream failure falls through to the route's friendly retry instead).
+- **The $5 cap is enforced at Anthropic, not in code** — prepaid credits with auto-reload off (+ an optional workspace spend limit) is the only hard guarantee; the fallback just degrades to free Gemini when that ceiling (or any error) is hit. Escape hatches: `AI_PROVIDER=anthropic` (Claude only, no fallback) | `AI_PROVIDER=google` (Gemini only — kill switch / no Claude spend; also the implicit default when no `ANTHROPIC_API_KEY`). `AGENT_MODEL` pins the primary model id.
 - **Anthropic prompt caching** (all inert on Gemini): the leading system message carries `cacheControl: ephemeral` (caches tools+system), and the last **two** user messages in the converted history carry breakpoints too — the older one re-reads the entry the previous turn wrote (whole history at ~0.1× price), the newer one writes the next turn's entry. This only works because history bytes are stable: volatile context (date, cart, profile, locale) rides as a **separate trailing user message** (`contextMessage`), never merged into the shopper's message or the system prompt. Keep `SYSTEM_PROMPT` byte-stable per deploy.
 - Rate-limit/quota errors map to a friendly "try again" message in the route's `onError`; `stopWhen: stepCountIs(12)` caps model calls per turn (a grocery run needs search+present pairs per item).
 - **Abuse guards (route):** per-IP sliding-window rate limit (12 req/min, in-memory per instance, localized 429 text) + a **global daily circuit breaker** (`DAILY_CHAT_CAP`, default 600/UTC day — protects a paid Anthropic balance; sits above Gemini's own 500/day so the free tier bites first) + the model only sees the last 30 messages (`ignoreIncompleteToolCalls` handles the clamped edge), text parts capped at 4 000 chars, cart context capped at 50 lines. A public demo on a free-tier key dies without this.

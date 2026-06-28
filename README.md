@@ -34,7 +34,7 @@ Built for the **[Kapruka Agent Challenge](https://www.kapruka.com/contactUs/agen
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
-- **Vercel AI SDK v6** with a **provider-swappable** model (`lib/agent/model.ts`) — Google **Gemini** (free) by default, **Claude** one env var away
+- **Vercel AI SDK v6** (`lib/agent/model.ts`) — **Claude** primary with an automatic **Gemini** (free-tier) fallback on any error, via `ai-fallback`
 - **Tailwind CSS v4** + lucide icons + entrance animations
 - **Zustand** for the cart
 - A small, dependency-free **MCP client** (`lib/mcp.ts`) speaking JSON-RPC over Streamable HTTP to `mcp.kapruka.com`
@@ -55,19 +55,19 @@ cp .env.example .env.local      # then add your key (see below)
 npm run dev                     # http://localhost:3210
 ```
 
-### API key
-Malee defaults to **Google Gemini's free tier**. Get a free key at <https://aistudio.google.com/apikey> and put it in `.env.local`:
+### API keys
+Malee runs on **Claude** (best quality + strongest Sinhala) with an automatic fallback to **Gemini's free tier** on any Claude error — set both keys for the full experience, or just the Gemini key to run free-only.
+
+Gemini (free, no billing): a key from <https://aistudio.google.com/apikey>. Claude: a key from <https://console.anthropic.com>.
 
 ```
-GOOGLE_GENERATIVE_AI_API_KEY=AIza...
+GOOGLE_GENERATIVE_AI_API_KEY=AIza...   # fallback (and standalone if no Claude key)
+ANTHROPIC_API_KEY=sk-ant-...           # primary; omit to run Gemini-only
 ```
 
-**Prefer Claude?** (best quality + strongest Sinhala) — add to `.env.local`:
-```
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-# optional: AGENT_MODEL=claude-opus-4-8
-```
+**Capping Claude spend:** the limit is enforced at Anthropic, not the app — buy **prepaid credits with auto-reload off** (+ an optional workspace spend limit). The minimum credit purchase is $5; to test against ~$1 first, set a $1 workspace spend limit. When the cap is hit, Malee falls back to free Gemini automatically.
+
+Escape hatches: `AI_PROVIDER=anthropic` (Claude only, no fallback) · `AI_PROVIDER=google` (Gemini only) · `AGENT_MODEL=claude-opus-4-8` (pin a model).
 
 ### Verify the Kapruka integration
 ```bash
@@ -82,7 +82,7 @@ npm run mcp:test -- --order # also creates one real (unpaid) guest order + pay l
 1. `npm i -g vercel` (once)
 2. `vercel login`
 3. From the project root: `vercel` — accept the defaults to create the project.
-4. Add env vars in the Vercel dashboard (Project → Settings → Environment Variables): `GOOGLE_GENERATIVE_AI_API_KEY` (and `AI_PROVIDER` / `ANTHROPIC_API_KEY` if using Claude).
+4. Add env vars in the Vercel dashboard (Project → Settings → Environment Variables): `ANTHROPIC_API_KEY` + `GOOGLE_GENERATIVE_AI_API_KEY` (Claude primary + Gemini fallback). For Gemini-only, set just the Google key.
 5. `vercel --prod` to publish. Paste the resulting URL above and into your challenge submission.
 
 ---

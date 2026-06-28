@@ -1,33 +1,62 @@
 import { google } from "@ai-sdk/google";
 import { anthropic } from "@ai-sdk/anthropic";
+import { createFallback } from "ai-fallback";
 import type { LanguageModel } from "ai";
 
 /**
- * The agent's model is swappable via env, so we can start on Google Gemini's
- * free tier now and flip to Claude later with NO code changes:
+ * Model selection: Claude primary, free-Gemini fallback.
  *
- *   AI_PROVIDER=google     (default)  +  GOOGLE_GENERATIVE_AI_API_KEY
- *   AI_PROVIDER=anthropic             +  ANTHROPIC_API_KEY
+ * By default the agent runs on Claude (claude-sonnet-4-6) and transparently
+ * falls back to Gemini's free tier on ANY Claude error — billing cap / credit
+ * balance exhausted, 429 rate limit, model unavailable, or a network blip.
  *
- * Optionally pin a specific model with AGENT_MODEL (otherwise a sensible
- * per-provider default is used). The Anthropic prompt-cache breakpoint set in
- * the chat route is inert on Gemini and activates automatically on Claude.
+ * The hard spend ceiling is enforced at Anthropic (prepaid credits + a
+ * workspace spend limit), NOT here — this layer just degrades gracefully when
+ * that ceiling (or any other error) is hit. The Anthropic prompt-cache
+ * breakpoints set in the chat route stay active on Claude and are inert on the
+ * Gemini fallback.
+ *
+ * Env escape hatches (AI_PROVIDER):
+ *   unset       → Claude primary + Gemini fallback (default) when ANTHROPIC_API_KEY
+ *                 is set, else Gemini only (a contributor without a Claude key
+ *                 still works out of the box)
+ *   "anthropic" → Claude only, no fallback (isolate Claude, e.g. to confirm billing)
+ *   "google"    → Gemini only, no Claude spend (kill switch)
+ * AGENT_MODEL pins the primary model id (default claude-sonnet-4-6 — or the
+ * Gemini model when AI_PROVIDER=google).
  */
-const PROVIDER = (process.env.AI_PROVIDER ?? "google").toLowerCase();
+const CLAUDE_MODEL = "claude-sonnet-4-6";
+const GEMINI_MODEL = "gemini-3.1-flash-lite";
 
-const DEFAULT_MODEL: Record<string, string> = {
-  // gemini-3.1-flash-lite has the most generous free tier of the text models
-  // (15 RPM / 500 RPD, vs 5 RPM / 20 RPD for 2.5-flash) — the right pick for a
-  // public free-tier demo. Bursts beyond the RPM are handled by the chat
-  // route's graceful retry. For higher limits, enable Gemini billing or set
-  // AI_PROVIDER=anthropic (claude-sonnet-4-6 default).
-  google: "gemini-3.1-flash-lite",
-  anthropic: "claude-sonnet-4-6",
-};
+const FORCE = process.env.AI_PROVIDER?.toLowerCase();
+const HAS_ANTHROPIC = Boolean(process.env.ANTHROPIC_API_KEY);
 
 export function getAgentModel(): LanguageModel {
-  const id = process.env.AGENT_MODEL ?? DEFAULT_MODEL[PROVIDER] ?? DEFAULT_MODEL.google;
-  return PROVIDER === "anthropic" ? anthropic(id) : google(id);
+  // Gemini only — explicit kill switch, or no Anthropic key configured.
+  if (FORCE === "google" || (!FORCE && !HAS_ANTHROPIC)) {
+    return google(process.env.AGENT_MODEL ?? GEMINI_MODEL);
+  }
+  // Claude only — no fallback (isolate Claude, e.g. to confirm credits work).
+  if (FORCE === "anthropic") {
+    return anthropic(process.env.AGENT_MODEL ?? CLAUDE_MODEL);
+  }
+  // Default: Claude primary, Gemini fallback on ANY Claude error.
+  return createFallback({
+    models: [anthropic(process.env.AGENT_MODEL ?? CLAUDE_MODEL), google(GEMINI_MODEL)],
+    // Fall back on ANY Claude error — the package's default retry list misses
+    // the credit-balance 400, which is exactly the budget case we care about.
+    shouldRetryThisError: () => true,
+    // Don't replay a half-streamed answer on Gemini (would show duplicate text).
+    // Billing / rate-limit / unavailable all error BEFORE streaming, so they
+    // still swap silently; a rare mid-stream failure falls through to the
+    // route's friendly retry message instead.
+    retryAfterOutput: false,
+    onError: (error, modelId) =>
+      console.warn(
+        `[model] "${modelId}" failed — falling back to Gemini:`,
+        error instanceof Error ? error.message : error,
+      ),
+  });
 }
 
-export const ACTIVE_PROVIDER = PROVIDER;
+export const ACTIVE_PROVIDER = FORCE ?? (HAS_ANTHROPIC ? "anthropic+google-fallback" : "google");

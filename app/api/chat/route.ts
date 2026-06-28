@@ -221,8 +221,14 @@ export async function POST(req: Request) {
     contextMessage(context),
   ];
 
+  // Hold the model reference so onFinish can read which provider actually served.
+  // NOTE: `response.modelId` reports the fallback wrapper's PRIMARY id (always
+  // "claude-…"), not the model that served — the wrapper looks like one model to
+  // the SDK. The wrapper's own `.modelId` getter tracks the active model, so it
+  // reflects a fallback that fired this turn.
+  const model = getAgentModel();
   const result = streamText({
-    model: getAgentModel(),
+    model,
     messages: modelMessages,
     tools: kaprukaTools,
     // The system prompt rides in `messages` (not the `system` option) so it can
@@ -231,6 +237,14 @@ export async function POST(req: Request) {
     // Chain tool calls (search → present → detail → delivery → order) within one
     // turn; a multi-item grocery run needs search+present pairs per item.
     stopWhen: stepCountIs(12),
+    // "claude-…" normally, or "gemini-…" when a Claude error tripped the fallback.
+    // Token counts help eyeball Claude spend against the prepaid balance.
+    onFinish: ({ totalUsage }) => {
+      const served = typeof model === "string" ? model : model.modelId;
+      console.log(
+        `[model] served by ${served} · in/out tokens: ${totalUsage.inputTokens ?? "?"}/${totalUsage.outputTokens ?? "?"}`,
+      );
+    },
   });
 
   return result.toUIMessageStreamResponse({
