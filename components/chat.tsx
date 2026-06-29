@@ -462,7 +462,7 @@ export function ChatShell() {
           <Avatar />
           <div className="leading-tight">
             <div className="font-display text-lg">Malee</div>
-            <div className="text-[11px] text-muted">{t.header.tagline}</div>
+            <div className="hidden text-[11px] text-muted sm:block">{t.header.tagline}</div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand-dark sm:flex">
