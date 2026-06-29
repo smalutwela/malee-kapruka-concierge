@@ -73,6 +73,30 @@ export function localeContext(locale: Locale): string {
   return "";
 }
 
+/**
+ * Per-turn language steer based on what the shopper ACTUALLY typed this turn —
+ * the salient nudge that makes language-mirroring stick. The Voice rule alone is
+ * one buried system-prompt line; repeated here every turn it carries far more
+ * weight (especially for a weaker model that follows it only sometimes).
+ *
+ * Sinhala/Tamil *script* is detected directly. Latin script is ambiguous —
+ * plain English vs romanised "Singlish"/"Tanglish" — so we remind Malee to
+ * mirror rather than assert a language: a wrong guess that flips English →
+ * Singlish would be worse than the occasional miss it replaces.
+ */
+export function languageSteer(text: string): string {
+  if (/\p{Script=Sinhala}/u.test(text)) {
+    return "The shopper just wrote in **Sinhala (සිංහල)** — reply in warm, everyday Sinhala.";
+  }
+  if (/\p{Script=Tamil}/u.test(text)) {
+    return "The shopper just wrote in **Tamil (தமிழ்)** — reply in warm, everyday Tamil.";
+  }
+  if (text.trim()) {
+    return 'The shopper\'s latest message is in the Latin alphabet — this may be plain English OR romanised Sinhala/Tamil ("Singlish"/"Tanglish", e.g. "machan gal bothalayak gamuda"). Reply in the SAME language and romanisation they used — if it\'s Singlish/Tanglish, answer in Singlish/Tanglish; do NOT switch to formal English.';
+  }
+  return "";
+}
+
 /** Per-turn dynamic context — injected after the cached prefix, not into it. */
 export function colomboContext(): string {
   const now = new Date();

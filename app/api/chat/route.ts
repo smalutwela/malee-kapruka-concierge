@@ -6,7 +6,7 @@ import {
   type UIMessage,
 } from "ai";
 import { kaprukaTools } from "@/lib/agent/tools";
-import { SYSTEM_PROMPT, colomboContext, localeContext } from "@/lib/agent/prompt";
+import { SYSTEM_PROMPT, colomboContext, localeContext, languageSteer } from "@/lib/agent/prompt";
 import { getAgentModel } from "@/lib/agent/model";
 import { normalizeLocale } from "@/lib/i18n/config";
 
@@ -163,6 +163,19 @@ function profileContext(profile?: Profile): string {
   return `The shopper has saved details — for a repeat or self-purchase, offer to reuse them (let them confirm or change anything); for a gift to someone else, collect the recipient's details fresh:\n${parts.join("\n")}`;
 }
 
+/** The latest user turn's text — feeds the per-turn languageSteer (mirror the
+ * language the shopper actually typed, including romanised Singlish/Tanglish). */
+function lastUserText(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "user") continue;
+    return m.parts
+      .map((p) => (p.type === "text" && typeof p.text === "string" ? p.text : ""))
+      .join(" ");
+  }
+  return "";
+}
+
 export async function POST(req: Request) {
   const { messages, cart, locale, profile } = (await req.json()) as {
     messages: UIMessage[];
@@ -198,6 +211,7 @@ export async function POST(req: Request) {
     cartContext(cart?.slice(0, MAX_CART_LINES)),
     profileContext(profile),
     localeContext(normalizeLocale(locale)),
+    languageSteer(lastUserText(messages)),
     underway
       ? 'The conversation is already underway — do NOT greet or say "Ayubowan" again; reply straight to the point.'
       : "",
