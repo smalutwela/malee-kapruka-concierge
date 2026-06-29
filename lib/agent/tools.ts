@@ -53,6 +53,121 @@ function dedupeById(res: unknown): unknown {
   return { ...r, results };
 }
 
+// Filler / shopping chatter we ignore when judging whether results match the
+// query — these words wouldn't appear in a product name anyway.
+const QUERY_STOPWORDS = new Set([
+  "the", "and", "for", "with", "any", "some", "this", "that", "kapruka",
+  "best", "good", "nice", "fresh", "brand", "branded", "quality",
+  "pack", "packet", "please", "want", "need", "looking",
+]);
+
+/** Meaningful query words (≥3 chars, not filler) to test result relevance against. */
+function significantTokens(q: string): string[] {
+  return Array.from(
+    new Set(
+      q
+        .toLowerCase()
+        .split(/[^a-z0-9]+/i)
+        .filter((w) => w.length >= 3 && !QUERY_STOPWORDS.has(w)),
+    ),
+  );
+}
+
+/** On-topic if any significant query word appears (whole-word) in the name or category. */
+function onTopic(result: unknown, tokens: string[]): boolean {
+  const r = result as { name?: unknown; category?: { name?: unknown } };
+  const name = typeof r?.name === "string" ? r.name : "";
+  const cat = r?.category && typeof r.category.name === "string" ? r.category.name : "";
+  const hay = `${name} ${cat}`.toLowerCase();
+  return tokens.some((t) => new RegExp(`\\b${t}\\b`).test(hay));
+}
+
+/**
+ * Kapruka's search is fuzzy: a rare or over-specific query (e.g. "samba rice")
+ * can come back as a few unrelated popular items (chocolate hampers) instead of
+ * nothing — which would then render as product cards verbatim. When NONE of the
+ * results share a meaningful word with the query, treat it as a miss: return an
+ * empty set + a note so the model retries with a simpler word, rather than
+ * surfacing junk. Conservative — only triggers on a TOTAL mismatch, so normal
+ * and gift searches (whose head noun appears in the names) pass through untouched.
+ */
+function dropIrrelevant(res: unknown, q: string): unknown {
+  if (!res || typeof res !== "object") return res;
+  const r = res as { results?: unknown[] };
+  if (!Array.isArray(r.results) || r.results.length === 0) return res;
+  const tokens = significantTokens(q);
+  if (tokens.length === 0) return res; // nothing specific to match on — leave as-is
+  if (r.results.some((item) => onTopic(item, tokens))) return res; // at least one real hit
+  return {
+    results: [],
+    note: `Search returned only unrelated items for "${q}". Retry with a simpler, single-word product name.`,
+  };
+}
+
+/**
+ * Strip product `url`s from search results before they reach the model. The
+ * search cards (ProductGrid/ProductCard) never use them, but a weak model will
+ * happily paste them as markdown links in chat — redundant next to the cards and
+ * against the "never hand out product URLs" rule. getProduct keeps its url for
+ * the detail card's "View on Kapruka" link; only the noisy list view is stripped.
+ */
+function stripResultUrls(res: unknown): unknown {
+  if (!res || typeof res !== "object") return res;
+  const r = res as { results?: unknown[] };
+  if (!Array.isArray(r.results)) return res;
+  const results = r.results.map((p) => {
+    if (!p || typeof p !== "object") return p;
+    const clone = { ...(p as Record<string, unknown>) };
+    delete clone.url;
+    return clone;
+  });
+  return { ...r, results };
+}
+
+/**
+ * Search is private research for the model; only `presentProducts` renders
+ * cards. Every searched summary is stashed here (per warm instance) so
+ * presentProducts can show a curated subset without re-hitting the network.
+ * Misses (cold instance, old id) fall back to a get_product fetch.
+ */
+const PRESENT_STASH = new Map<string, Record<string, unknown>>();
+const PRESENT_STASH_MAX = 600;
+
+function stashResults(res: unknown): void {
+  if (!res || typeof res !== "object") return;
+  const r = res as { results?: unknown[] };
+  if (!Array.isArray(r.results)) return;
+  for (const p of r.results) {
+    const item = p as Record<string, unknown> | null;
+    if (!item || typeof item.id !== "string") continue;
+    PRESENT_STASH.delete(item.id); // refresh insertion order (Map iterates oldest-first)
+    PRESENT_STASH.set(item.id, item);
+  }
+  while (PRESENT_STASH.size > PRESENT_STASH_MAX) {
+    const oldest = PRESENT_STASH.keys().next().value;
+    if (oldest === undefined) break;
+    PRESENT_STASH.delete(oldest);
+  }
+}
+
+/** Map a get_product detail payload to the summary shape the product cards render. */
+function detailToSummary(detail: unknown): Record<string, unknown> | null {
+  if (!detail || typeof detail !== "object") return null;
+  const d = detail as Record<string, unknown> & { images?: unknown[] };
+  if (typeof d.id !== "string") return null;
+  return {
+    id: d.id,
+    name: d.name,
+    summary: d.summary,
+    price: d.price,
+    compare_at_price: d.compare_at_price,
+    in_stock: d.in_stock,
+    stock_level: d.stock_level,
+    image_url: Array.isArray(d.images) ? (d.images[0] ?? null) : null,
+    category: d.category,
+  };
+}
+
 const currency = z
   .string()
   .default("LKR")
@@ -61,7 +176,7 @@ const currency = z
 export const kaprukaTools = {
   searchProducts: tool({
     description:
-      "Search Kapruka's live catalogue. Call this whenever the shopper wants to find or browse gifts. Use specific, descriptive queries (e.g. 'red roses bouquet', 'birthday chocolate box') rather than single vague words — vague queries can return nothing. Results render as product cards in the UI.",
+      "Search Kapruka's live catalogue. Call this whenever the shopper wants to find or browse anything — groceries, electronics, home, fashion, beauty, gifts and more. Use specific, descriptive queries (e.g. 'basmati rice 5kg', 'wireless earbuds', 'red roses bouquet') rather than single vague words — vague queries can return nothing. IMPORTANT: results are PRIVATE research for you — the shopper sees nothing. After choosing which items are actually worth showing, you MUST call presentProducts with their ids to display the product cards.",
     inputSchema: z.object({
       q: z.string().min(3).describe("Descriptive search query, at least 3 characters."),
       category: z
@@ -94,7 +209,41 @@ export const kaprukaTools = {
       if (isEmptyResult(res) && category) {
         res = await run("kapruka_search_products", base);
       }
-      return dedupeById(res);
+      const cleaned = stripResultUrls(dropIrrelevant(dedupeById(res), q));
+      stashResults(cleaned);
+      return cleaned;
+    },
+  }),
+
+  presentProducts: tool({
+    description:
+      "Show the shopper a set of product cards. This is the ONLY way products become visible — searchProducts results are private to you. Call it with the ids of the items you actually recommend (best pick first, max 8), after filtering out anything irrelevant, off-topic, or unworthy. Never present items you wouldn't stand behind; if a search returned junk, search again instead of presenting it.",
+    inputSchema: z.object({
+      productIds: z
+        .array(z.string().min(3))
+        .min(1)
+        .max(8)
+        .describe("Product ids from earlier searchProducts/getProduct results, best first."),
+    }),
+    execute: async ({ productIds }) => {
+      const results: Record<string, unknown>[] = [];
+      const seen = new Set<string>();
+      for (const id of productIds) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const stashed = PRESENT_STASH.get(id);
+        if (stashed) {
+          results.push(stashed);
+          continue;
+        }
+        // Cold instance or an id from getProduct — fetch (cached 5 min in lib/mcp).
+        const detail = detailToSummary(await run("kapruka_get_product", { product_id: id, currency: "LKR" }));
+        if (detail) results.push(detail);
+      }
+      if (!results.length) {
+        return { note: "None of those product ids could be shown — re-check the ids from your search results." };
+      }
+      return { results };
     },
   }),
 
@@ -105,8 +254,12 @@ export const kaprukaTools = {
       productId: z.string().min(3).describe("Kapruka product ID, e.g. 'FLOWERS00T2075'."),
       currency,
     }),
-    execute: ({ productId, currency }) =>
-      run("kapruka_get_product", { product_id: productId, currency }),
+    execute: async ({ productId, currency }) => {
+      const detail = await run("kapruka_get_product", { product_id: productId, currency });
+      const summary = detailToSummary(detail);
+      if (summary) stashResults({ results: [summary] });
+      return detail;
+    },
   }),
 
   listCategories: tool({
@@ -155,6 +308,11 @@ export const kaprukaTools = {
         .array(
           z.object({
             productId: z.string().describe("Kapruka product ID."),
+            name: z
+              .string()
+              .max(150)
+              .optional()
+              .describe("Product name exactly as the catalogue shows it — used for the receipt display."),
             quantity: z.number().int().min(1).max(99).default(1),
             icingText: z.string().max(120).optional().describe("Cake icing text (cakes only)."),
           }),
@@ -202,7 +360,7 @@ export const kaprukaTools = {
 
   trackOrder: tool({
     description:
-      "Look up the status and delivery progress of a Kapruka order by its order number (from the confirmation email after payment — NOT the pre-payment order_ref).",
+      "Look up the status and delivery progress of a Kapruka order by its order number (from the confirmation email after payment — NOT the pre-payment order_ref). Only call this once the shopper has actually given you the order number; if you don't have it yet, ask for it first rather than calling with a guessed or empty value.",
     inputSchema: z.object({
       orderNumber: z.string().min(4).max(40).describe("Kapruka order number, e.g. 'VIMP34456CB2'."),
     }),

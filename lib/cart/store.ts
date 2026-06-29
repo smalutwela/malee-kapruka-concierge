@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { Money } from "@/lib/types";
 
 export interface CartItem {
@@ -19,32 +20,49 @@ interface CartState {
   clear: () => void;
 }
 
-export const useCart = create<CartState>((set) => ({
-  items: [],
-  add: (item, qty = 1) =>
-    set((s) => {
-      const existing = s.items.find((i) => i.id === item.id);
-      if (existing) {
-        return {
-          items: s.items.map((i) =>
-            i.id === item.id ? { ...i, quantity: i.quantity + qty } : i,
-          ),
-        };
-      }
-      return { items: [...s.items, { ...item, quantity: qty }] };
+/**
+ * Client-side source of truth for the cart, persisted to localStorage so it
+ * survives reloads (a "this replaces the website" experience never loses the
+ * basket). `skipHydration` keeps the first client render identical to the SSR
+ * HTML — ChatShell calls `useCart.persist.rehydrate()` after mount instead, so
+ * there's no hydration mismatch.
+ */
+export const useCart = create<CartState>()(
+  persist(
+    (set) => ({
+      items: [],
+      add: (item, qty = 1) =>
+        set((s) => {
+          const existing = s.items.find((i) => i.id === item.id);
+          if (existing) {
+            return {
+              items: s.items.map((i) =>
+                i.id === item.id ? { ...i, quantity: i.quantity + qty } : i,
+              ),
+            };
+          }
+          return { items: [...s.items, { ...item, quantity: qty }] };
+        }),
+      remove: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
+      setQty: (id, qty) =>
+        set((s) => ({
+          items:
+            qty <= 0
+              ? s.items.filter((i) => i.id !== id)
+              : s.items.map((i) => (i.id === id ? { ...i, quantity: qty } : i)),
+        })),
+      setIcing: (id, text) =>
+        set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, icingText: text } : i)) })),
+      clear: () => set({ items: [] }),
     }),
-  remove: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
-  setQty: (id, qty) =>
-    set((s) => ({
-      items:
-        qty <= 0
-          ? s.items.filter((i) => i.id !== id)
-          : s.items.map((i) => (i.id === id ? { ...i, quantity: qty } : i)),
-    })),
-  setIcing: (id, text) =>
-    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, icingText: text } : i)) })),
-  clear: () => set({ items: [] }),
-}));
+    {
+      name: "malee-cart",
+      storage: createJSONStorage(() => localStorage),
+      skipHydration: true,
+      partialize: (s) => ({ items: s.items }),
+    },
+  ),
+);
 
 export function cartCount(items: CartItem[]): number {
   return items.reduce((n, i) => n + i.quantity, 0);

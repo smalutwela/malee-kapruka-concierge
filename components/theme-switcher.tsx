@@ -5,13 +5,13 @@ import { Check, Palette } from "lucide-react";
 import { useT } from "@/lib/i18n/context";
 
 const THEMES = [
-  { id: "light", swatch: "#402970" },
   { id: "dark", swatch: "#211a31" },
+  { id: "light", swatch: "#402970" },
   { id: "warm", swatch: "#0f7a5f" },
 ] as const;
 
 const STORAGE_KEY = "malee-theme";
-const DEFAULT_THEME = "light";
+const DEFAULT_THEME = "dark";
 
 /**
  * The active theme is *external* state: it lives on `<html data-theme>` (applied

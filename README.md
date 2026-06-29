@@ -1,48 +1,50 @@
-# 🌸 Malee — Kapruka Gift Concierge
+# 🌸 Malee - Kapruka Shopping Concierge
 
-> **Ayubowan!** Malee is a warm, full-screen AI shopping concierge that helps you find and send the perfect gift anywhere in Sri Lanka — flowers, cakes, chocolates and more — chatting over the **live Kapruka catalogue**, quoting delivery, and placing guest orders with a click-to-pay link.
+> **Ayubowan!** Malee is a warm, full-screen AI shopping concierge for everything Kapruka sells - groceries, electronics, home, fashion, beauty, and the perfect gift to send - chatting over the **live Kapruka catalogue**, quoting delivery, and placing guest orders with a click-to-pay link. Most people shop for themselves; gifting is one beloved mode.
 
 Built for the **[Kapruka Agent Challenge](https://www.kapruka.com/contactUs/agentChallenge.html)** on the free [Kapruka MCP server](https://mcp.kapruka.com).
 
-**🔗 Live demo:** **https://kapruka-ai-agent-claude.vercel.app**
+**🔗 Live demo:** **https://malee-kapruka-agent.vercel.app**
 
 ---
 
 ## What it does
 
-- **Full-screen chat concierge** (not a widget) with a distinct persona — "Malee", a thoughtful Sri Lankan gifting host.
-- **Live catalogue, no mock data** — every product, price, image, delivery rate and order comes from the real Kapruka MCP server.
-- **Rich generative UI** — tool results stream in as product cards, a delivery-quote card, an order summary, and an order-tracking timeline.
-- **Persistent gift cart** — add items from any card, adjust quantities, and check out.
-- **Complete, guided checkout** — Malee validates the delivery city + date, quotes the flat fee, surfaces freshness warnings for perishables (cakes/flowers), shows an order summary, confirms, then returns a **click-to-pay link** (60-minute price lock).
-- **Order tracking** — paste a Kapruka order number to see status + a delivery timeline.
-- **Speaks your language** — understands and replies in **English, Sinhala, or Tanglish**.
+- **Full-screen chat concierge** (not a widget) with a distinct persona - "Malee", a thoughtful Sri Lankan shopping host who reads the situation and has an opinion.
+- **Live catalogue, no mock data** - every product, price, image, delivery rate and order comes from the real Kapruka MCP server.
+- **Rich generative UI** - tool results stream in as product cards, a delivery-quote card, an order summary, and an order-tracking timeline.
+- **A visible team of specialists** - as Malee talks, a 🛍️ Shopper and 🚚 Logistics agent visibly work the catalogue and delivery behind her.
+- **Persistent cart** - add items from any card, adjust quantities, and check out.
+- **Complete, guided checkout** - Malee validates the delivery city + date, quotes the flat fee, surfaces freshness warnings for perishables (cakes/flowers), shows an order summary, confirms, then returns a **click-to-pay link** (60-minute price lock).
+- **Order tracking** - paste a Kapruka order number to see status + a delivery timeline.
+- **Remembers you** - saved delivery details and a local order history make a repeat shop one tap: **Reorder** refills the cart, and the welcome screen offers a *"Reorder my usual"* chip.
+- **Speaks your language** - understands and replies in **English, Sinhala, Tamil**, or romanised **"Singlish"/"Tanglish"**.
 
 ### Maps to the challenge rubric
 | Criterion | How Malee delivers |
 |---|---|
 | Experience & Polish | Streaming replies, typing/working indicators, skeletons, graceful empty/error states, mobile-friendly |
 | Visual Richness | Live product imagery, price/stock/ships-worldwide badges, animated cards, warm Sri Lankan palette + display serif |
-| Personality | "Malee" — warm, local, gifting-savvy; greets with Ayubowan, gentle tasteful upsell |
-| Usefulness | Occasion-led discovery, smart search recovery, honest guidance |
+| Personality | "Malee" - warm, local, opinionated; reads the situation, shops for you or helps you gift, greets with Ayubowan |
+| Usefulness | Everyday + occasion-led discovery, smart search recovery, honest opinions |
 | End-to-End Completeness | Search → detail → cart → delivery quote → confirm → pay link → track |
-| Creativity / Bonuses | Multi-item carts, gift messaging, cake icing text, delivery-date constraints, **Sinhala/Tanglish** |
+| Creativity / Bonuses | Visible specialist agents (Shopper/Logistics), multi-item carts, gift messaging, cake icing text, delivery-date constraints, **Sinhala/Tanglish** |
 
 ---
 
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
-- **Vercel AI SDK v6** with a **provider-swappable** model (`lib/agent/model.ts`) — Google **Gemini** (free) by default, **Claude** one env var away
+- **Vercel AI SDK v6** with a **provider-swappable** model (`lib/agent/model.ts`) - Google **Gemini** (free) by default, **Claude** one env var away
 - **Tailwind CSS v4** + lucide icons + entrance animations
-- **Zustand** for the cart
+- **Zustand** for client state - cart, saved profile, and order history, persisted to localStorage
 - A small, dependency-free **MCP client** (`lib/mcp.ts`) speaking JSON-RPC over Streamable HTTP to `mcp.kapruka.com`
 
 ```
 Browser (useChat) ──▶ /api/chat (streamText + tools) ──▶ lib/mcp.ts ──▶ mcp.kapruka.com
 ```
 
-The 7 Kapruka tools are exposed to the model with clean schemas in `lib/agent/tools.ts`; the persona/system prompt lives in `lib/agent/prompt.ts`. The cart is sent with each turn and injected as per-turn context, keeping the cached system+tools prefix stable for Anthropic prompt caching.
+The 8 tools exposed to the model - 7 backed by the Kapruka MCP, plus `presentProducts`, a curated-display tool - have clean schemas in `lib/agent/tools.ts`; the persona/system prompt lives in `lib/agent/prompt.ts`. The cart, saved profile, and locale are sent with each turn and injected as per-turn context, keeping the cached system+tools prefix stable for Anthropic prompt caching.
 
 ---
 
@@ -61,7 +63,7 @@ Malee defaults to **Google Gemini's free tier**. Get a free key at <https://aist
 GOOGLE_GENERATIVE_AI_API_KEY=AIza...
 ```
 
-**Prefer Claude?** (best quality + strongest Sinhala) — add to `.env.local`:
+**Prefer Claude?** (best quality + strongest Sinhala) - add to `.env.local`:
 ```
 AI_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
@@ -80,7 +82,7 @@ npm run mcp:test -- --order # also creates one real (unpaid) guest order + pay l
 
 1. `npm i -g vercel` (once)
 2. `vercel login`
-3. From the project root: `vercel` — accept the defaults to create the project.
+3. From the project root: `vercel` - accept the defaults to create the project.
 4. Add env vars in the Vercel dashboard (Project → Settings → Environment Variables): `GOOGLE_GENERATIVE_AI_API_KEY` (and `AI_PROVIDER` / `ANTHROPIC_API_KEY` if using Claude).
 5. `vercel --prod` to publish. Paste the resulting URL above and into your challenge submission.
 
@@ -90,19 +92,21 @@ npm run mcp:test -- --order # also creates one real (unpaid) guest order + pay l
 ```
 app/
   layout.tsx, page.tsx          # full-screen chat shell
-  api/chat/route.ts             # streamText + tools + cart/date context injection
+  api/chat/route.ts             # streamText + tools + cart/date/locale context injection
 components/
-  chat.tsx                      # ChatShell, messages, cart drawer, composer
+  chat.tsx                      # ChatShell, messages, cart + account drawers, composer
   cards.tsx                     # product / delivery / order / tracking cards
+  account-drawer.tsx            # saved details + order history (reorder / pay / track)
 lib/
-  mcp.ts                        # Kapruka MCP client (session, SSE, JSON)
+  mcp.ts                        # Kapruka MCP client (session, SSE, JSON, response cache)
   agent/{model,prompt,tools}.ts # provider, persona, curated tools
-  cart/store.ts                 # Zustand cart
+  cart/store.ts                 # Zustand cart (+ profile/, orders/ stores)
+  i18n/                         # en / si / ta - locale provider + dictionaries
 scripts/mcp-smoke.ts            # live MCP integration test
 ```
 
 > 🛠 **Developers:** see **[`CLAUDE.md`](CLAUDE.md)** for architecture, conventions, and the Kapruka MCP gotchas.
 
 ## Notes
-- Free public MCP tier: ~60 requests/min and 30 orders/hour per IP — the client surfaces rate-limit messages gracefully.
+- Free public MCP tier: ~60 requests/min and 30 orders/hour per IP - the client surfaces rate-limit messages gracefully.
 - `kapruka_create_order` places a **real** guest order (a click-to-pay link); no money moves until someone actually pays it.

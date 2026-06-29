@@ -48,8 +48,10 @@ function parse(text: string): ReactNode[] {
     if (at > last) nodes.push(text.slice(last, at));
 
     if (m[1] !== undefined) {
-      // [label](url) — only linkify safe schemes, else keep the literal text.
-      nodes.push(SAFE_SCHEME.test(m[2]) ? anchor(m[1], m[2], key++) : m[0]);
+      // [label](target) — linkify only safe URL schemes. Otherwise (a weak model
+      // sometimes emits [Product Name](PRODUCT_ID) next to the real cards), drop
+      // the link syntax and show just the human label, never a broken/raw link.
+      nodes.push(SAFE_SCHEME.test(m[2]) ? anchor(m[1], m[2], key++) : m[1]);
     } else if (m[3] !== undefined) {
       nodes.push(
         <strong key={key++} className="font-semibold">
@@ -73,6 +75,16 @@ function parse(text: string): ReactNode[] {
   return nodes;
 }
 
+// Models love "* item" / "- item" bullet lines; render the marker as a real
+// bullet instead of leaking raw asterisks. Indentation is preserved (the caller
+// renders with whitespace-pre-wrap), and "**bold" doesn't match because the
+// marker must be followed by whitespace.
+const BULLET_LINE = /^(\s*)[-*]\s+/;
+
 export function RichText({ text }: { text: string }) {
-  return <>{parse(text)}</>;
+  const withBullets = text
+    .split("\n")
+    .map((line) => line.replace(BULLET_LINE, "$1• "))
+    .join("\n");
+  return <>{parse(withBullets)}</>;
 }

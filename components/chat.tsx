@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { ArrowUp, Flower2, Gift, Loader2, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
+import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, RotateCcw, ShoppingBag, Sparkles, SquarePen, Trash2, X } from "lucide-react";
 import {
   CategoryChips,
   DeliveryQuoteCard,
@@ -14,8 +14,10 @@ import {
   TrackingTimeline,
   type AskFn,
 } from "@/components/cards";
+import { AccountDrawer } from "@/components/account-drawer";
 import type {
   CategoryList,
+  CreateOrderToolInput,
   DeliveryQuote,
   OrderConfirmation,
   OrderTracking,
@@ -24,29 +26,74 @@ import type {
 } from "@/lib/types";
 import { cn, formatPrice } from "@/lib/utils";
 import { cartCount, cartSubtotal, useCart } from "@/lib/cart/store";
+import { useProfile } from "@/lib/profile/store";
+import { useOrders, type OrderLine } from "@/lib/orders/store";
+import { useCaptureOrders } from "@/lib/orders/capture";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { RichText } from "@/components/rich-text";
 import { useLocale, useT } from "@/lib/i18n/context";
+import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
 
 /* part shapes we read off UIMessage.parts */
 type AnyPart = {
   type: string;
   text?: string;
   state?: string;
+  input?: unknown;
   output?: unknown;
 };
 
-/* Occasion chips, in display order — labels come from the active locale. */
-const OCCASION_KEYS = [
-  "birthday",
-  "anniversary",
-  "avurudu",
-  "getWell",
-  "love",
-  "newBaby",
-  "justBecause",
+/* Shopping-mode chips, in display order — labels come from the active locale.
+   Everyday self-shopping leads; gifting is one mode among many. */
+const MODE_KEYS = [
+  "groceries",
+  "electronics",
+  "home",
+  "beauty",
+  "fashion",
+  "baby",
+  "gift",
 ] as const;
+
+/* The tool loop is presented as a small team of specialists at work, so the
+   experience feels like more than one search box. Each tool maps to the
+   specialist that "runs" it; Malee herself is the concierge who talks. */
+const SPECIALIST: Record<string, "shopper" | "logistics"> = {
+  searchProducts: "shopper",
+  presentProducts: "shopper",
+  getProduct: "shopper",
+  listCategories: "shopper",
+  listDeliveryCities: "logistics",
+  checkDelivery: "logistics",
+  createOrder: "logistics",
+  trackOrder: "logistics",
+};
+const SPECIALIST_EMOJI = { shopper: "🛍️", logistics: "🚚" } as const;
+
+/* The conversation is persisted to localStorage so a refresh resumes where the
+   shopper left off — completing the "never lose your place" experience alongside
+   the persisted cart, profile, and order history. */
+const CHAT_STORAGE_KEY = "malee-chat";
+
+/* The transport builds the request body at SEND time, so every request —
+   including a "Try again" regenerate — carries the live cart, saved details,
+   and chosen language. (A per-sendMessage body would silently drop them on
+   regenerate.) The stores are read via getState(); the locale lives in this
+   module-scope holder, synced from context by ChatShell. */
+let currentLocale: Locale = DEFAULT_LOCALE;
+const chatTransport = new DefaultChatTransport<UIMessage>({
+  api: "/api/chat",
+  prepareSendMessagesRequest: ({ messages, body }) => ({
+    body: {
+      messages,
+      cart: useCart.getState().items,
+      locale: currentLocale,
+      profile: useProfile.getState().details,
+      ...body,
+    },
+  }),
+});
 
 function Avatar({ size = "md" }: { size?: "md" | "lg" }) {
   return (
@@ -70,7 +117,17 @@ function noteOf(output: unknown): { error?: string; note?: string } | null {
   return null;
 }
 
-function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAsk: AskFn }) {
+function ToolView({
+  name,
+  input,
+  output,
+  onAsk,
+}: {
+  name: string;
+  input: unknown;
+  output: unknown;
+  onAsk: AskFn;
+}) {
   const t = useT();
   const n = noteOf(output);
   if (n?.error) {
@@ -84,6 +141,9 @@ function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAs
 
   switch (name) {
     case "searchProducts":
+      // Private research for the model — cards render via presentProducts only.
+      return null;
+    case "presentProducts":
       return (output as SearchResults).results?.length ? (
         <ProductGrid data={output as SearchResults} onAsk={onAsk} />
       ) : null;
@@ -99,7 +159,10 @@ function ToolView({ name, output, onAsk }: { name: string; output: unknown; onAs
       ) : null;
     case "createOrder":
       return (output as OrderConfirmation).checkout_url ? (
-        <OrderSummaryCard order={output as OrderConfirmation} />
+        <OrderSummaryCard
+          order={output as OrderConfirmation}
+          input={input as CreateOrderToolInput | undefined}
+        />
       ) : null;
     case "trackOrder":
       return (output as OrderTracking).order_number ? (
@@ -150,17 +213,21 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
       <Avatar />
       <div className="min-w-0 flex-1 space-y-2 pt-1">
         {parts.map((part, i) => {
-          if (part.type === "text" && part.text) {
+          if (part.type === "text" && part.text?.trim()) {
             return (
               <p key={i} className="whitespace-pre-wrap text-[15px] leading-relaxed text-ink">
-                <RichText text={part.text} />
+                {/* trim: stray blank lines around a part otherwise render as a gap
+                    between the text and the cards that follow it */}
+                <RichText text={part.text.trim()} />
               </p>
             );
           }
           if (part.type.startsWith("tool-")) {
             const name = part.type.slice(5);
             if (part.state === "output-available") {
-              return <ToolView key={i} name={name} output={part.output} onAsk={onAsk} />;
+              return (
+                <ToolView key={i} name={name} input={part.input} output={part.output} onAsk={onAsk} />
+              );
             }
             if (part.state === "output-error") {
               return (
@@ -169,13 +236,19 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
                 </p>
               );
             }
+            const spec = SPECIALIST[name];
             return (
               <div
                 key={i}
                 className="inline-flex items-center gap-2 rounded-full border border-line bg-card px-3 py-1.5 text-xs text-muted"
               >
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-brand" />
-                {t.tools[name as keyof typeof t.tools] ?? t.tools.working}
+                {spec && (
+                  <span className="font-semibold text-ink">
+                    {SPECIALIST_EMOJI[spec]} {t.specialists[spec]}
+                  </span>
+                )}
+                <span>{t.tools[name as keyof typeof t.tools] ?? t.tools.working}</span>
               </div>
             );
           }
@@ -186,8 +259,11 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
   );
 }
 
-function Welcome({ onPick }: { onPick: AskFn }) {
+function Welcome({ onPick, onReorder }: { onPick: AskFn; onReorder: (items: OrderLine[]) => void }) {
   const t = useT();
+  // Reordering is the single most under-rated repeat-commerce lever — when this
+  // shopper has history, the fastest path to "my usual" sits right up front.
+  const lastOrder = useOrders((s) => s.orders[0]);
   return (
     <div className="animate-rise flex flex-col items-center px-2 pt-10 text-center sm:pt-16">
       <Avatar size="lg" />
@@ -198,19 +274,29 @@ function Welcome({ onPick }: { onPick: AskFn }) {
       </h2>
       <p className="mt-2 max-w-md text-[15px] text-muted">{t.welcome.subtitle}</p>
 
-      <div className="mt-6 flex flex-wrap justify-center gap-2">
-        {OCCASION_KEYS.map((key) => {
-          const label = t.welcome.occasions[key];
-          return (
-            <button
-              key={key}
-              onClick={() => onPick(t.prompts.occasion(label))}
-              className="rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
-            >
-              {label}
-            </button>
-          );
-        })}
+      {lastOrder && lastOrder.items.length > 0 && (
+        <button
+          onClick={() => onReorder(lastOrder.items)}
+          className="mt-6 flex max-w-md items-center gap-2.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-medium text-brand-dark shadow-sm transition hover:border-brand hover:bg-brand/15"
+        >
+          <RotateCcw className="h-4 w-4 shrink-0" />
+          <span className="shrink-0">{t.welcome.reorderLast}</span>
+          <span className="min-w-0 truncate text-xs text-muted">
+            {lastOrder.items.map((i) => i.name).join(", ")}
+          </span>
+        </button>
+      )}
+
+      <div className={cn("flex flex-wrap justify-center gap-2", lastOrder ? "mt-4" : "mt-6")}>
+        {MODE_KEYS.map((key) => (
+          <button
+            key={key}
+            onClick={() => onPick(t.prompts.mode[key])}
+            className="rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
+          >
+            {t.welcome.modes[key]}
+          </button>
+        ))}
       </div>
 
       <div className="mt-8 grid w-full max-w-xl gap-2 sm:grid-cols-1">
@@ -220,7 +306,7 @@ function Welcome({ onPick }: { onPick: AskFn }) {
             onClick={() => onPick(ex)}
             className="group flex items-center gap-3 rounded-xl border border-line bg-card/70 px-4 py-3 text-left text-sm text-ink transition hover:border-brand hover:bg-card"
           >
-            <Flower2 className="h-4 w-4 shrink-0 text-accent" />
+            <Sparkles className="h-4 w-4 shrink-0 text-accent" />
             <span className="flex-1">&ldquo;{ex}&rdquo;</span>
             <ArrowUp className="h-4 w-4 rotate-45 text-muted transition group-hover:text-brand" />
           </button>
@@ -283,15 +369,84 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
 export function ChatShell() {
   const t = useT();
   const { locale } = useLocale();
-  const { messages, sendMessage, status, error, regenerate } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+
+  // Keep the module-scope transport's locale in sync with the UI language.
+  useEffect(() => {
+    currentLocale = locale;
+  }, [locale]);
+  const { messages, sendMessage, setMessages, status, error, regenerate } = useChat({
+    transport: chatTransport,
   });
   const busy = status === "submitted" || status === "streaming";
   const [cartOpen, setCartOpen] = useState(false);
-  // Send the live cart + chosen language with every turn so Malee orders the
-  // right items and replies in the shopper's language.
-  const ask: AskFn = (text) =>
-    void sendMessage({ text }, { body: { cart: useCart.getState().items, locale } });
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  // The persisted stores skip auto-hydration (so the first client render matches
+  // the SSR HTML); rehydrate them once on mount, THEN restore the transcript.
+  // The order matters: order capture below dedupes against the orders store, so
+  // the store must be hydrated before a restored transcript is scanned —
+  // otherwise every past order would be re-captured (and re-clear the cart).
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      useCart.persist.rehydrate(),
+      useProfile.persist.rehydrate(),
+      useOrders.persist.rehydrate(),
+    ]).then(() => {
+      if (cancelled) return;
+      try {
+        const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+        const saved = raw ? (JSON.parse(raw) as UIMessage[]) : [];
+        if (Array.isArray(saved) && saved.length) setMessages(saved);
+      } catch {
+        /* corrupt or unavailable storage — start fresh */
+      }
+      setHydrated(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setMessages]);
+
+  // Persist the transcript after each settled turn (skip per-token mid-stream writes).
+  useEffect(() => {
+    if (!hydrated || busy) return;
+    try {
+      if (messages.length) localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+      else localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch {
+      /* quota exceeded or unavailable — ignore */
+    }
+  }, [messages, busy, hydrated]);
+
+  // Record every placed order to local history + seed saved details. Gated on
+  // hydration so a restored transcript is only scanned once the orders store
+  // can dedupe it.
+  useCaptureOrders(messages, hydrated);
+
+  // The transport injects cart/locale/profile at request time (see above).
+  const ask: AskFn = (text) => void sendMessage({ text });
+
+  // Reorder: refill the cart from a past order, then open the cart to review.
+  const reorder = (items: OrderLine[]) => {
+    const add = useCart.getState().add;
+    for (const i of items) {
+      add({ id: i.id, name: i.name, price: i.price, image: i.image, icingText: i.icingText }, i.quantity);
+    }
+    setAccountOpen(false);
+    setCartOpen(true);
+  };
+
+  // Start a fresh conversation — clears only the chat; cart, profile, and orders persist.
+  const newChat = () => {
+    setMessages([]);
+    try {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -315,6 +470,8 @@ export function ChatShell() {
             </span>
             <LocaleSwitcher />
             <ThemeSwitcher />
+            {messages.length > 0 && <NewChatButton onClick={newChat} />}
+            <AccountButton onClick={() => setAccountOpen(true)} />
             <CartButton onClick={() => setCartOpen(true)} />
           </div>
         </div>
@@ -323,7 +480,7 @@ export function ChatShell() {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
           {messages.length === 0 ? (
-            <Welcome onPick={ask} />
+            <Welcome onPick={ask} onReorder={reorder} />
           ) : (
             messages.map((m) => <MessageView key={m.id} message={m} onAsk={ask} />)
           )}
@@ -361,8 +518,55 @@ export function ChatShell() {
           setCartOpen(false);
           ask(t.prompts.checkout);
         }}
+        onSuggest={() => {
+          setCartOpen(false);
+          ask(t.prompts.pairWithCart);
+        }}
+      />
+      <AccountDrawer
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        onReorder={reorder}
+        onTrackNumber={(orderNumber) => {
+          setAccountOpen(false);
+          ask(t.prompts.trackNumber(orderNumber));
+        }}
       />
     </div>
+  );
+}
+
+function NewChatButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  return (
+    <button
+      onClick={onClick}
+      aria-label={t.controls.newChat}
+      title={t.controls.newChat}
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-card text-ink transition hover:border-brand"
+    >
+      <SquarePen className="h-4 w-4" />
+    </button>
+  );
+}
+
+function AccountButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
+  const count = useOrders((s) => s.orders.length);
+  return (
+    <button
+      onClick={onClick}
+      aria-label={t.account.title}
+      className="relative flex h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand"
+    >
+      <Receipt className="h-4 w-4" />
+      <span className="hidden sm:inline">{t.account.open}</span>
+      {count > 0 && (
+        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1 text-[11px] font-bold text-white">
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -390,10 +594,12 @@ function CartDrawer({
   open,
   onClose,
   onCheckout,
+  onSuggest,
 }: {
   open: boolean;
   onClose: () => void;
   onCheckout: () => void;
+  onSuggest: () => void;
 }) {
   const t = useT();
   const items = useCart((s) => s.items);
@@ -425,7 +631,7 @@ function CartDrawer({
         )}
       >
         <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <Gift className="h-4 w-4 text-brand" />
+          <ShoppingBag className="h-4 w-4 text-brand" />
           <span className="font-display text-lg">{t.cart.title}</span>
           <button
             onClick={onClose}
@@ -441,7 +647,7 @@ function CartDrawer({
             <ShoppingBag className="h-8 w-8 opacity-40" />
             <p className="text-sm">
               {t.cart.emptyPre}
-              <span className="font-medium text-ink">{t.cards.addToGift}</span>
+              <span className="font-medium text-ink">{t.cards.addToCart}</span>
               {t.cart.emptyPost}
             </p>
           </div>
@@ -505,10 +711,16 @@ function CartDrawer({
               </span>
             </div>
             <button
+              onClick={onSuggest}
+              className="mb-2 flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-xs font-semibold text-ink transition hover:border-brand hover:text-brand-dark"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.cart.suggestAddons}
+            </button>
+            <button
               onClick={onCheckout}
               className="flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
             >
-              <Gift className="h-4 w-4" /> {t.cart.checkout}
+              <ShoppingBag className="h-4 w-4" /> {t.cart.checkout}
             </button>
             <p className="mt-2 text-center text-[11px] text-muted">{t.cart.deliveryNote}</p>
           </div>

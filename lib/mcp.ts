@@ -175,16 +175,44 @@ function resetSession(): void {
   initPromise = null;
 }
 
+// ---- read-only response cache (cuts rate-limit pressure; per warm instance) ----
+// Kapruka explicitly asks clients to cache aggressively to stay under the
+// ~60 req/min limit (and create_order's 30/hr). Read-only tools are cached with
+// a TTL scaled to how static they are; state-changing / realtime tools
+// (create_order, track_order) are deliberately absent here, so never cached.
+const READ_TTL_MS: Record<string, number> = {
+  kapruka_list_categories: 30 * 60_000,
+  kapruka_list_delivery_cities: 30 * 60_000,
+  kapruka_get_product: 5 * 60_000,
+  kapruka_search_products: 2 * 60_000,
+};
+const MAX_CACHE_ENTRIES = 200;
+const responseCache = new Map<string, { at: number; value: ToolResult }>();
+
+function cacheKey(name: string, args: Record<string, unknown>): string {
+  return `${name}:${JSON.stringify(args)}`;
+}
+
 /**
  * Call a Kapruka MCP tool by name. `args` are the flat tool arguments (e.g.
  * `{ q: "roses", limit: 6 }`); they are wrapped in the required `params`
  * envelope and `response_format: "json"` is injected automatically.
+ *
+ * Read-only tools are served from a short-lived in-memory cache when fresh,
+ * avoiding a network round-trip (and the rate limit) entirely.
  */
 export async function callTool(
   name: string,
   args: Record<string, unknown> = {},
   _retried = false,
 ): Promise<ToolResult> {
+  const ttl = READ_TTL_MS[name];
+  const key = ttl ? cacheKey(name, args) : "";
+  if (ttl) {
+    const hit = responseCache.get(key);
+    if (hit && Date.now() - hit.at < ttl) return hit.value;
+  }
+
   await ensureSession();
 
   const id = nextId();
@@ -238,7 +266,15 @@ export async function callTool(
     throw new McpError(text || "MCP tool reported an error", { code: "tool_error" });
   }
 
-  return { json, text };
+  const value: ToolResult = { json, text };
+  if (ttl) {
+    responseCache.set(key, { at: Date.now(), value });
+    if (responseCache.size > MAX_CACHE_ENTRIES) {
+      const oldest = responseCache.keys().next().value;
+      if (oldest) responseCache.delete(oldest);
+    }
+  }
+  return value;
 }
 
 /** List available tools — handy for debugging / verifying the catalog of tools. */
