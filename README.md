@@ -35,7 +35,7 @@ Built for the **[Kapruka Agent Challenge](https://www.kapruka.com/contactUs/agen
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
-- **Vercel AI SDK v6** with a **provider-swappable** model (`lib/agent/model.ts`) — Google **Gemini** (free) by default, **Claude** one env var away
+- **Vercel AI SDK v6** with a **provider-swappable** model (`lib/agent/model.ts`) - Google **Gemini** (free) by default, **Claude** one env var away
 - **Tailwind CSS v4** + lucide icons + entrance animations
 - **Zustand** for client state - cart, saved profile, and order history, persisted to localStorage
 - A small, dependency-free **MCP client** (`lib/mcp.ts`) speaking JSON-RPC over Streamable HTTP to `mcp.kapruka.com`
@@ -63,7 +63,7 @@ Malee defaults to **Google Gemini's free tier**. Get a free key at <https://aist
 GOOGLE_GENERATIVE_AI_API_KEY=AIza...
 ```
 
-**Prefer Claude?** (best quality + strongest Sinhala) — add to `.env.local`:
+**Prefer Claude?** (best quality + strongest Sinhala) - add to `.env.local`:
 ```
 AI_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
