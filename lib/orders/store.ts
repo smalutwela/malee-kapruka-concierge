@@ -34,31 +34,51 @@ export interface OrderRecord {
   deliveryDate?: string;
 }
 
+/** Keep only this many captured orderRefs for dedupe — plenty for a browser-local history. */
+const SEEN_CAP = 300;
+
 interface OrdersState {
   orders: OrderRecord[];
+  /**
+   * Every orderRef ever captured — kept through remove()/clear(). The capture
+   * effect re-scans the whole transcript on every message change, so a ref
+   * missing from `orders` must not read as "new order": it would resurrect
+   * orders the shopper deleted (and re-run capture side effects on the cart
+   * and profile).
+   */
+  seen: string[];
   /** Add an order, de-duped by orderRef (the capture effect may re-run on re-render). */
   add: (order: OrderRecord) => void;
   remove: (orderRef: string) => void;
   clear: () => void;
+  /** True if this orderRef was ever captured, even if since removed/cleared. */
+  hasSeen: (orderRef: string) => boolean;
 }
 
 export const useOrders = create<OrdersState>()(
   persist(
     (set, get) => ({
       orders: [],
+      seen: [],
       add: (order) => {
-        if (get().orders.some((o) => o.orderRef === order.orderRef)) return;
-        set((s) => ({ orders: [order, ...s.orders] }));
+        if (get().hasSeen(order.orderRef)) return;
+        set((s) => ({
+          orders: [order, ...s.orders],
+          seen: [order.orderRef, ...s.seen].slice(0, SEEN_CAP),
+        }));
       },
       remove: (orderRef) =>
         set((s) => ({ orders: s.orders.filter((o) => o.orderRef !== orderRef) })),
       clear: () => set({ orders: [] }),
+      // The `orders` fallback covers state persisted before `seen` existed.
+      hasSeen: (orderRef) =>
+        get().seen.includes(orderRef) || get().orders.some((o) => o.orderRef === orderRef),
     }),
     {
       name: "malee-orders",
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      partialize: (s) => ({ orders: s.orders }),
+      partialize: (s) => ({ orders: s.orders, seen: s.seen }),
     },
   ),
 );
