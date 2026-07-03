@@ -262,6 +262,48 @@ export const kaprukaTools = {
     },
   }),
 
+  addToCart: tool({
+    description:
+      "Add a product to the shopper's in-app cart (the cart drawer in this chat). Call this whenever the shopper asks to add/put/keep an item in their cart or basket for later checkout. Pass ONLY the product id and quantity — the item's real name, price, and image are fetched from the catalogue, and the cart updates instantly. This does NOT place an order (checkout still goes through createOrder after confirmation). NEVER tell the shopper an item is in their cart without calling this tool.",
+    inputSchema: z.object({
+      productId: z.string().min(3).describe("Kapruka product ID from earlier search/present results."),
+      quantity: z.number().int().min(1).max(99).default(1),
+    }),
+    execute: async ({ productId, quantity }) => {
+      // Authoritative item data only — the stash (filled by every search) or a
+      // cached get_product fetch. The model never types names or prices here,
+      // so the cart can't drift from the live catalogue.
+      let item = PRESENT_STASH.get(productId) ?? null;
+      if (!item) {
+        item = detailToSummary(
+          await run("kapruka_get_product", { product_id: productId, currency: "LKR" }),
+        );
+      }
+      if (!item || typeof item.id !== "string") {
+        return {
+          error: `Product ${productId} was not found — re-check the id from your search results.`,
+        };
+      }
+      if (item.in_stock === false) {
+        return {
+          error: `"${item.name}" is out of stock right now — offer an alternative instead of adding it.`,
+        };
+      }
+      return {
+        // Unique per add — the client applies each addId to the cart exactly
+        // once, so a restored transcript can't re-add items on re-scan.
+        addId: crypto.randomUUID(),
+        quantity,
+        item: {
+          id: item.id,
+          name: item.name,
+          price: item.price ?? null,
+          image: item.image_url ?? null,
+        },
+      };
+    },
+  }),
+
   listCategories: tool({
     description:
       "List Kapruka's top-level product categories. Use when the shopper is unsure what to get and wants to browse by category.",
