@@ -113,7 +113,13 @@ export interface CategoryList {
  * itemise the order card and capture order history.
  */
 export interface CreateOrderToolInput {
-  cart?: { productId: string; name?: string; quantity?: number; icingText?: string }[];
+  cart?: {
+    productId: string;
+    name?: string;
+    unitPrice?: number;
+    quantity?: number;
+    icingText?: string;
+  }[];
   recipient?: { name?: string; phone?: string };
   delivery?: { address?: string; city?: string; date?: string };
   sender?: { name?: string; anonymous?: boolean };

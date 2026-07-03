@@ -313,6 +313,12 @@ export const kaprukaTools = {
               .max(150)
               .optional()
               .describe("Product name exactly as the catalogue shows it — used for the receipt display."),
+            unitPrice: z
+              .number()
+              .optional()
+              .describe(
+                "Unit price in LKR exactly as the catalogue showed it — used only for the local receipt/history display, never sent to Kapruka.",
+              ),
             quantity: z.number().int().min(1).max(99).default(1),
             icingText: z.string().max(120).optional().describe("Cake icing text (cakes only)."),
           }),

@@ -390,7 +390,10 @@ export function OrderSummaryCard({
         id: line.productId,
         name: known?.name ?? line.name ?? line.productId,
         quantity: line.quantity ?? 1,
-        price: known?.price,
+        // Direct (cart-less) orders enrich from the model-passed unit price.
+        price:
+          known?.price ??
+          (line.unitPrice != null ? { amount: line.unitPrice, currency: s.currency } : undefined),
       };
     });
   });
