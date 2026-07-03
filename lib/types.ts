@@ -126,6 +126,18 @@ export interface CreateOrderToolInput {
   giftMessage?: string;
 }
 
+/**
+ * Shape of the addToCart tool *output* (built server-side from the catalogue —
+ * never from model-typed values). The client applies it to the cart store via
+ * useCaptureCartAdds, keyed by the unique addId.
+ */
+export interface AddToCartToolOutput {
+  addId?: string;
+  quantity?: number;
+  item?: { id: string; name: string; price?: Money | null; image?: string | null };
+  error?: string;
+}
+
 /** Fallback shape for empty/error tool results. */
 export interface ToolNote {
   note?: string;
