@@ -282,7 +282,7 @@ const si: Messages = {
     lowStock: "ඉතුරු ටිකයි",
     inStock: "තොගයේ ඇත",
     shipsWorldwide: "ලොව පුරා බෙදා හරී",
-    addToCart: "කරත්තයට එක් කරන්න",
+    addToCart: "එක් කරන්න",
     added: "එක් කළා",
     addedToCart: "ඔබේ කරත්තයට එක් කළා",
     details: "විස්තර",

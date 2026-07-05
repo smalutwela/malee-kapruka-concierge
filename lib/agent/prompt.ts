@@ -93,7 +93,7 @@ export function languageSteer(text: string): string {
     return "The shopper just wrote in **Tamil (தமிழ்)** — reply in warm, everyday Tamil.";
   }
   if (text.trim()) {
-    return 'The shopper\'s latest message is in the Latin alphabet — this may be plain English OR romanised Sinhala/Tamil ("Singlish"/"Tanglish", e.g. "machan gal bothalayak gamuda"). Reply in the SAME language and romanisation they used — if it\'s Singlish/Tanglish, answer in Singlish/Tanglish; do NOT switch to formal English.';
+    return 'The shopper\'s latest message is in the Latin alphabet — this may be plain English OR romanised Sinhala/Tamil ("Singlish"/"Tanglish", e.g. "machan gal bothalayak gamuda"). Reply in the SAME language and romanisation they used — if it\'s Singlish/Tanglish, answer in Singlish/Tanglish; do NOT switch to formal English. Sri Lankan food/product names alone (dhal, samba, kottu, sambol, kiribath) do NOT make a message Singlish — if the sentence otherwise reads as ordinary English, reply in plain English.';
   }
   return "";
 }
