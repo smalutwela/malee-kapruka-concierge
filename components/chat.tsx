@@ -6,6 +6,7 @@ import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
 import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, RotateCcw, ShoppingBag, Sparkles, SquarePen, Trash2, X } from "lucide-react";
 import {
+  CartAddCard,
   CategoryChips,
   DeliveryQuoteCard,
   OrderSummaryCard,
@@ -16,6 +17,7 @@ import {
 } from "@/components/cards";
 import { AccountDrawer } from "@/components/account-drawer";
 import type {
+  AddToCartToolOutput,
   CategoryList,
   CreateOrderToolInput,
   DeliveryQuote,
@@ -26,6 +28,7 @@ import type {
 } from "@/lib/types";
 import { cn, formatPrice } from "@/lib/utils";
 import { cartCount, cartSubtotal, useCart } from "@/lib/cart/store";
+import { useCaptureCartAdds } from "@/lib/cart/capture";
 import { useProfile } from "@/lib/profile/store";
 import { useOrders, type OrderLine } from "@/lib/orders/store";
 import { useCaptureOrders } from "@/lib/orders/capture";
@@ -63,6 +66,7 @@ const SPECIALIST: Record<string, "shopper" | "logistics"> = {
   searchProducts: "shopper",
   presentProducts: "shopper",
   getProduct: "shopper",
+  addToCart: "shopper",
   listCategories: "shopper",
   listDeliveryCities: "logistics",
   checkDelivery: "logistics",
@@ -150,6 +154,10 @@ function ToolView({
     case "getProduct":
       return (output as ProductDetail).id ? (
         <ProductDetailCard product={output as ProductDetail} />
+      ) : null;
+    case "addToCart":
+      return (output as AddToCartToolOutput).item ? (
+        <CartAddCard data={output as AddToCartToolOutput} />
       ) : null;
     case "listCategories":
       return <CategoryChips data={output as CategoryList} onAsk={onAsk} />;
@@ -420,10 +428,11 @@ export function ChatShell() {
     }
   }, [messages, busy, hydrated]);
 
-  // Record every placed order to local history + seed saved details. Gated on
-  // hydration so a restored transcript is only scanned once the orders store
-  // can dedupe it.
+  // Record every placed order to local history + seed saved details, and apply
+  // every agent cart-add to the cart store. Both gated on hydration so a
+  // restored transcript is only scanned once the stores can dedupe it.
   useCaptureOrders(messages, hydrated);
+  useCaptureCartAdds(messages, hydrated);
 
   // The transport injects cart/locale/profile at request time (see above).
   const ask: AskFn = (text) => void sendMessage({ text });

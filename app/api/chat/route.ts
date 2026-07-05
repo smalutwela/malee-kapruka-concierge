@@ -70,6 +70,20 @@ const DAILY_MESSAGE: Record<string, string> = {
   ta: "Malee இன்று நிறைய பேருக்கு உதவிவிட்டு ஓய்வெடுக்கிறாள் 🌙 நாளை மீண்டும் வாருங்கள்!",
 };
 
+// Mid-stream failures (provider quota, transient errors) reach the shopper via
+// onError below — localized like the 429s, since they read as Malee speaking.
+const BUSY_MESSAGE: Record<string, string> = {
+  en: "Aiyo — I'm getting a lot of requests right now 🙏 Please give me a few seconds and try again.",
+  si: "අයියෝ — දැන් මට ඉල්ලීම් ගොඩක් එනවා 🙏 තත්පර කීපයකට පස්සේ නැවත උත්සාහ කරන්න.",
+  ta: "ஐயோ — இப்போது எனக்கு நிறைய கோரிக்கைகள் வருகின்றன 🙏 சில வினாடிகள் கழித்து மீண்டும் முயற்சிக்கவும்.",
+};
+
+const HICCUP_MESSAGE: Record<string, string> = {
+  en: "Sorry, something hiccuped on my end. Please try again in a moment.",
+  si: "සමාවෙන්න, මගේ පැත්තෙන් පොඩි අවුලක් වුණා. මොහොතකින් නැවත උත්සාහ කරන්න.",
+  ta: "மன்னிக்கவும், என் பக்கத்தில் ஒரு சிறு தடங்கல் ஏற்பட்டது. சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்.",
+};
+
 // Caps on what reaches the model: a long-running chat stays usable (the cards
 // live in the browser transcript) while the model sees a bounded recent window.
 const MAX_MODEL_MESSAGES = 30;
@@ -188,15 +202,17 @@ export async function POST(req: Request) {
     return new Response("Invalid request.", { status: 400 });
   }
 
+  const loc = normalizeLocale(locale);
+
   const ip = (req.headers.get("x-forwarded-for") ?? "local").split(",")[0].trim();
   if (rateLimited(ip)) {
-    return new Response(RATE_MESSAGE[normalizeLocale(locale)] ?? RATE_MESSAGE.en, {
+    return new Response(RATE_MESSAGE[loc] ?? RATE_MESSAGE.en, {
       status: 429,
       headers: { "Retry-After": "30" },
     });
   }
   if (dailyLimited()) {
-    return new Response(DAILY_MESSAGE[normalizeLocale(locale)] ?? DAILY_MESSAGE.en, {
+    return new Response(DAILY_MESSAGE[loc] ?? DAILY_MESSAGE.en, {
       status: 429,
       headers: { "Retry-After": "3600" },
     });
@@ -210,7 +226,7 @@ export async function POST(req: Request) {
     colomboContext(),
     cartContext(cart?.slice(0, MAX_CART_LINES)),
     profileContext(profile),
-    localeContext(normalizeLocale(locale)),
+    localeContext(loc),
     languageSteer(lastUserText(messages)),
     underway
       ? 'The conversation is already underway — do NOT greet or say "Ayubowan" again; reply straight to the point.'
@@ -251,10 +267,10 @@ export async function POST(req: Request) {
     onError: (error) => {
       const msg = error instanceof Error ? error.message : String(error);
       if (/quota|rate.?limit|429|exceeded|resource.?exhausted/i.test(msg)) {
-        return "Aiyo — I'm getting a lot of requests right now 🙏 Please give me a few seconds and try again.";
+        return BUSY_MESSAGE[loc] ?? BUSY_MESSAGE.en;
       }
       console.error("chat stream error:", msg);
-      return "Sorry, something hiccuped on my end. Please try again in a moment.";
+      return HICCUP_MESSAGE[loc] ?? HICCUP_MESSAGE.en;
     },
   });
 }

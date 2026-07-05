@@ -113,11 +113,29 @@ export interface CategoryList {
  * itemise the order card and capture order history.
  */
 export interface CreateOrderToolInput {
-  cart?: { productId: string; name?: string; quantity?: number; icingText?: string }[];
+  cart?: {
+    productId: string;
+    name?: string;
+    unitPrice?: number;
+    quantity?: number;
+    icingText?: string;
+  }[];
   recipient?: { name?: string; phone?: string };
   delivery?: { address?: string; city?: string; date?: string };
   sender?: { name?: string; anonymous?: boolean };
   giftMessage?: string;
+}
+
+/**
+ * Shape of the addToCart tool *output* (built server-side from the catalogue —
+ * never from model-typed values). The client applies it to the cart store via
+ * useCaptureCartAdds, keyed by the unique addId.
+ */
+export interface AddToCartToolOutput {
+  addId?: string;
+  quantity?: number;
+  item?: { id: string; name: string; price?: Money | null; image?: string | null };
+  error?: string;
 }
 
 /** Fallback shape for empty/error tool results. */

@@ -11,9 +11,21 @@ export interface CartItem {
   icingText?: string;
 }
 
+/** Keep only this many applied addIds for dedupe — plenty for a browser-local cart. */
+const SEEN_ADDS_CAP = 200;
+
 interface CartState {
   items: CartItem[];
+  /**
+   * Every addToCart-tool addId ever applied. useCaptureCartAdds re-scans the
+   * whole transcript on every message change, so an already-applied add must be
+   * recognisable forever — otherwise a restored transcript would re-add items
+   * the shopper has since removed or checked out.
+   */
+  seenAdds: string[];
   add: (item: Omit<CartItem, "quantity">, qty?: number) => void;
+  /** Apply an addToCart tool result exactly once, keyed by its unique addId. */
+  applyAdd: (addId: string, item: Omit<CartItem, "quantity">, qty?: number) => void;
   remove: (id: string) => void;
   setQty: (id: string, qty: number) => void;
   setIcing: (id: string, text: string) => void;
@@ -29,8 +41,9 @@ interface CartState {
  */
 export const useCart = create<CartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       items: [],
+      seenAdds: [],
       add: (item, qty = 1) =>
         set((s) => {
           const existing = s.items.find((i) => i.id === item.id);
@@ -43,6 +56,11 @@ export const useCart = create<CartState>()(
           }
           return { items: [...s.items, { ...item, quantity: qty }] };
         }),
+      applyAdd: (addId, item, qty = 1) => {
+        if (get().seenAdds.includes(addId)) return;
+        set((s) => ({ seenAdds: [addId, ...s.seenAdds].slice(0, SEEN_ADDS_CAP) }));
+        get().add(item, qty);
+      },
       remove: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
       setQty: (id, qty) =>
         set((s) => ({
@@ -59,7 +77,7 @@ export const useCart = create<CartState>()(
       name: "malee-cart",
       storage: createJSONStorage(() => localStorage),
       skipHydration: true,
-      partialize: (s) => ({ items: s.items }),
+      partialize: (s) => ({ items: s.items, seenAdds: s.seenAdds }),
     },
   ),
 );

@@ -19,6 +19,7 @@ import { useCart } from "@/lib/cart/store";
 import { useOrders } from "@/lib/orders/store";
 import { useT } from "@/lib/i18n/context";
 import type {
+  AddToCartToolOutput,
   CategoryList,
   CreateOrderToolInput,
   DeliveryQuote,
@@ -344,6 +345,39 @@ export function DeliveryQuoteCard({ quote }: { quote: DeliveryQuote }) {
   );
 }
 
+/* ----------------------------- cart add (agent) ----------------------------- */
+
+/**
+ * Confirmation row for an agent-side addToCart. The actual cart mutation happens
+ * in useCaptureCartAdds (store-side, deduped by addId) — this card only renders
+ * the tool result, so it stays honest even on a restored transcript.
+ */
+export function CartAddCard({ data }: { data: AddToCartToolOutput }) {
+  const t = useT();
+  const item = data.item;
+  if (!item) return null;
+  const qty = data.quantity ?? 1;
+  return (
+    <div className="animate-rise my-2 flex items-center gap-3 rounded-2xl border border-line bg-card p-2.5 pr-4 shadow-sm">
+      <SmartImage
+        src={resizeImage(item.image ?? undefined, 96)}
+        alt={item.name}
+        className="h-12 w-12 shrink-0 rounded-xl"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-ink">{item.name}</p>
+        <p className="text-xs text-muted">
+          {qty}×{item.price?.amount != null ? ` · ${formatPrice(item.price.amount * qty, item.price.currency)}` : ""}
+        </p>
+      </div>
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+        <Check className="h-3.5 w-3.5" />
+        {t.cards.addedToCart}
+      </span>
+    </div>
+  );
+}
+
 /* ----------------------------- order (pay link) ----------------------------- */
 
 function useCountdown(expiresAt?: string) {
@@ -390,7 +424,10 @@ export function OrderSummaryCard({
         id: line.productId,
         name: known?.name ?? line.name ?? line.productId,
         quantity: line.quantity ?? 1,
-        price: known?.price,
+        // Direct (cart-less) orders enrich from the model-passed unit price.
+        price:
+          known?.price ??
+          (line.unitPrice != null ? { amount: line.unitPrice, currency: s.currency } : undefined),
       };
     });
   });
