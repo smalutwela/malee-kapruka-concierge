@@ -143,3 +143,110 @@ export interface ToolNote {
   note?: string;
   error?: string;
 }
+
+/* ------------------------------------------------------------------ *
+ *  Phase 2 customer account (private-preview MCP tools)
+ *
+ *  These mirror the *normalized* shapes produced by lib/account/normalize.ts,
+ *  NOT the raw backend payloads — which arrive with spaces in their keys
+ *  ("full name", "order date"), phone numbers ending in a stray "<BR", and
+ *  ALL-CAPS names. Everything below is already cleaned.
+ * ------------------------------------------------------------------ */
+
+export interface CustomerProfile {
+  email: string;
+  fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
+  /** Account language preference, e.g. "English" — a hint for which language to reply in. */
+  language: string | null;
+  billing: {
+    name: string | null;
+    address: string | null;
+    city: string | null;
+    postcode: string | null;
+    country: string | null;
+    phone: string | null;
+  } | null;
+}
+
+export interface AccountOrderItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number | null;
+  lineTotal: number | null;
+  currency: string;
+}
+
+export interface AccountOrder {
+  reference: string;
+  /** Machine-friendly status slug, e.g. "in_process", "delivered". */
+  statusKey: string;
+  /** Display status, e.g. "In Process". */
+  statusLabel: string;
+  total: number | null;
+  currency: string;
+  /** ISO yyyy-mm-dd (parsed from the backend's Java date string), or null. */
+  orderedAt: string | null;
+  deliveryDate: string | null;
+  recipient: { name: string | null; phone: string | null; address: string | null; city: string | null } | null;
+  giftMessage: string | null;
+  instructions: string | null;
+  items: AccountOrderItem[];
+}
+
+export interface AccountOrderHistory {
+  orders: AccountOrder[];
+  count: number;
+}
+
+export interface SavedAddress {
+  /** Stable key for React lists + for the model to reference one address. */
+  id: string;
+  /** "Home", "Office", or the recipient's name — what the shopper would call it. */
+  label: string;
+  name: string;
+  address: string;
+  city: string;
+  phone: string | null;
+  /** true = in the account address book; false = merely used recently. */
+  saved: boolean;
+}
+
+export interface AddressBook {
+  email: string;
+  addresses: SavedAddress[];
+}
+
+/** One line of a past order, re-priced against today's live catalogue. */
+export interface ReorderLine {
+  productId: string;
+  name: string;
+  image: string | null;
+  quantity: number;
+  /** What they paid last time (null if the old order didn't record it). */
+  thenPrice: number | null;
+  nowPrice: number | null;
+  currency: string;
+  inStock: boolean;
+  priceChanged: boolean;
+}
+
+export interface ReorderDrop {
+  productId: string;
+  name: string;
+  reason: "no_longer_sold" | "out_of_stock";
+}
+
+export interface ReorderPlan {
+  reference: string;
+  orderedAt: string | null;
+  lines: ReorderLine[];
+  /** Items from the original order that can't be bought today. */
+  unavailable: ReorderDrop[];
+  nowTotal?: number;
+  currency?: string;
+  note?: string;
+}

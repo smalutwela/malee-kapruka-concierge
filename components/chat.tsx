@@ -4,36 +4,48 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { ArrowUp, Flower2, Loader2, Minus, Plus, Receipt, RotateCcw, ShoppingBag, Sparkles, SquarePen, Trash2, X } from "lucide-react";
+import { ArrowUp, Flower2, Loader2, Menu, Minus, PanelLeftOpen, Plus, Receipt, RotateCcw, ShoppingBag, Sparkles, SquarePen, Trash2, UserRound, X } from "lucide-react";
 import {
+  AccountProfileCard,
+  AddressBookCard,
   CartAddCard,
   CategoryChips,
   DeliveryQuoteCard,
+  OrderHistoryCard,
   OrderSummaryCard,
   ProductDetailCard,
   ProductGrid,
+  ReorderCard,
   TrackingTimeline,
   type AskFn,
 } from "@/components/cards";
 import { AccountDrawer } from "@/components/account-drawer";
+import { ChatSidebar } from "@/components/chat-sidebar";
+import { Sheet } from "@/components/sheet";
 import type {
+  AccountOrderHistory,
+  AddressBook,
   AddToCartToolOutput,
   CategoryList,
   CreateOrderToolInput,
+  CustomerProfile,
   DeliveryQuote,
   OrderConfirmation,
   OrderTracking,
   ProductDetail,
+  ReorderPlan,
   SearchResults,
 } from "@/lib/types";
 import { cn, formatPrice } from "@/lib/utils";
 import { cartCount, cartSubtotal, useCart } from "@/lib/cart/store";
 import { useCaptureCartAdds } from "@/lib/cart/capture";
+import { useAccount } from "@/lib/account/store";
+import { useCaptureAccount } from "@/lib/account/capture";
 import { useProfile } from "@/lib/profile/store";
 import { useOrders, type OrderLine } from "@/lib/orders/store";
 import { useCaptureOrders } from "@/lib/orders/capture";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { LocaleSwitcher } from "@/components/locale-switcher";
+import { deriveTitle, firstUserText, useChats } from "@/lib/chat/store";
+import { loadTranscript, takeLegacyTranscript, writeTranscript } from "@/lib/chat/storage";
 import { RichText } from "@/components/rich-text";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
@@ -62,7 +74,7 @@ const MODE_KEYS = [
 /* The tool loop is presented as a small team of specialists at work, so the
    experience feels like more than one search box. Each tool maps to the
    specialist that "runs" it; Malee herself is the concierge who talks. */
-const SPECIALIST: Record<string, "shopper" | "logistics"> = {
+const SPECIALIST: Record<string, "shopper" | "logistics" | "account"> = {
   searchProducts: "shopper",
   presentProducts: "shopper",
   getProduct: "shopper",
@@ -72,13 +84,23 @@ const SPECIALIST: Record<string, "shopper" | "logistics"> = {
   checkDelivery: "logistics",
   createOrder: "logistics",
   trackOrder: "logistics",
+  getAccountProfile: "account",
+  getOrderHistory: "account",
+  getSavedAddresses: "account",
+  reorderPastOrder: "account",
 };
-const SPECIALIST_EMOJI = { shopper: "🛍️", logistics: "🚚" } as const;
+const SPECIALIST_EMOJI = { shopper: "🛍️", logistics: "🚚", account: "👤" } as const;
 
-/* The conversation is persisted to localStorage so a refresh resumes where the
-   shopper left off — completing the "never lose your place" experience alongside
-   the persisted cart, profile, and order history. */
-const CHAT_STORAGE_KEY = "malee-chat";
+/* Conversations are persisted per session (lib/chat/storage.ts) so a refresh
+   resumes where the shopper left off and the sidebar can offer every earlier
+   chat — alongside the persisted cart, profile, and order history, which stay
+   global across sessions (one shopper, one basket, many conversations).
+
+   The chat id can't be generated during the first render: it must match on the
+   server and the client, and only after hydration do we know whether to restore
+   a saved session or mint a fresh one. This placeholder covers that first paint,
+   when the transcript is empty anyway. */
+const DRAFT_CHAT_ID = "draft";
 
 /* The transport builds the request body at SEND time, so every request —
    including a "Try again" regenerate — carries the live cart, saved details,
@@ -94,6 +116,9 @@ const chatTransport = new DefaultChatTransport<UIMessage>({
       cart: useCart.getState().items,
       locale: currentLocale,
       profile: useProfile.getState().details,
+      // Who the shopper signed in as. The server only honours this for lookups
+      // if it matches an email the shopper actually typed (see the route).
+      account: { email: useAccount.getState().email, name: useAccount.getState().name },
       ...body,
     },
   }),
@@ -175,6 +200,22 @@ function ToolView({
     case "trackOrder":
       return (output as OrderTracking).order_number ? (
         <TrackingTimeline order={output as OrderTracking} />
+      ) : null;
+    case "getAccountProfile": {
+      const customer = (output as { customer?: CustomerProfile }).customer;
+      return customer ? <AccountProfileCard customer={customer} /> : null;
+    }
+    case "getOrderHistory":
+      return (output as AccountOrderHistory).orders?.length ? (
+        <OrderHistoryCard history={output as AccountOrderHistory} onAsk={onAsk} />
+      ) : null;
+    case "getSavedAddresses":
+      return (output as AddressBook).addresses?.length ? (
+        <AddressBookCard book={output as AddressBook} onAsk={onAsk} />
+      ) : null;
+    case "reorderPastOrder":
+      return (output as ReorderPlan).reference ? (
+        <ReorderCard plan={output as ReorderPlan} />
       ) : null;
     case "listDeliveryCities": {
       const cities = (output as { cities?: { name: string }[] }).cities ?? [];
@@ -267,11 +308,22 @@ function MessageView({ message, onAsk }: { message: UIMessage; onAsk: AskFn }) {
   );
 }
 
-function Welcome({ onPick, onReorder }: { onPick: AskFn; onReorder: (items: OrderLine[]) => void }) {
+function Welcome({
+  onPick,
+  onReorder,
+  onSignIn,
+}: {
+  onPick: AskFn;
+  onReorder: (items: OrderLine[]) => void;
+  onSignIn: () => void;
+}) {
   const t = useT();
   // Reordering is the single most under-rated repeat-commerce lever — when this
   // shopper has history, the fastest path to "my usual" sits right up front.
   const lastOrder = useOrders((s) => s.orders[0]);
+  // Signed in? Jump straight to the real Kapruka history. Otherwise the chip
+  // opens the drawer so they can type their email — we never assume one.
+  const accountEmail = useAccount((s) => s.email);
   return (
     <div className="animate-rise flex flex-col items-center px-2 pt-10 text-center sm:pt-16">
       <Avatar size="lg" />
@@ -282,20 +334,29 @@ function Welcome({ onPick, onReorder }: { onPick: AskFn; onReorder: (items: Orde
       </h2>
       <p className="mt-2 max-w-md text-[15px] text-muted">{t.welcome.subtitle}</p>
 
-      {lastOrder && lastOrder.items.length > 0 && (
+      <div className="mt-6 flex max-w-md flex-col items-center gap-2">
+        {lastOrder && lastOrder.items.length > 0 && (
+          <button
+            onClick={() => onReorder(lastOrder.items)}
+            className="flex max-w-full items-center gap-2.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-medium text-brand-dark shadow-sm transition hover:border-brand hover:bg-brand/15"
+          >
+            <RotateCcw className="h-4 w-4 shrink-0" />
+            <span className="shrink-0">{t.welcome.reorderLast}</span>
+            <span className="min-w-0 truncate text-xs text-muted">
+              {lastOrder.items.map((i) => i.name).join(", ")}
+            </span>
+          </button>
+        )}
         <button
-          onClick={() => onReorder(lastOrder.items)}
-          className="mt-6 flex max-w-md items-center gap-2.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-medium text-brand-dark shadow-sm transition hover:border-brand hover:bg-brand/15"
+          onClick={() => (accountEmail ? onPick(t.prompts.myOrders) : onSignIn())}
+          className="flex max-w-full items-center gap-2.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
         >
-          <RotateCcw className="h-4 w-4 shrink-0" />
-          <span className="shrink-0">{t.welcome.reorderLast}</span>
-          <span className="min-w-0 truncate text-xs text-muted">
-            {lastOrder.items.map((i) => i.name).join(", ")}
-          </span>
+          <UserRound className="h-4 w-4 shrink-0 text-brand" />
+          <span className="truncate">{t.welcome.signIn}</span>
         </button>
-      )}
+      </div>
 
-      <div className={cn("flex flex-wrap justify-center gap-2", lastOrder ? "mt-4" : "mt-6")}>
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
         {MODE_KEYS.map((key) => (
           <button
             key={key}
@@ -338,8 +399,8 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
   }
 
   return (
-    <div className="border-t border-line bg-cream/80 backdrop-blur">
-      <div className="mx-auto max-w-3xl px-4 py-3">
+    <div className="safe-bottom border-t border-line bg-cream/80 backdrop-blur">
+      <div className="mx-auto max-w-3xl px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-card p-2 shadow-sm focus-within:border-brand">
           <textarea
             ref={ref}
@@ -357,18 +418,23 @@ function Composer({ onSend, disabled }: { onSend: AskFn; disabled: boolean }) {
                 submit();
               }
             }}
-            className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-[15px] outline-none placeholder:text-muted/70"
+            // 16px on mobile is not a style choice: iOS Safari zooms the whole
+            // viewport when you focus an input smaller than that, and never
+            // zooms back out.
+            className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-base outline-none placeholder:text-muted/70 sm:text-[15px]"
           />
           <button
             onClick={submit}
             disabled={disabled || !value.trim()}
             aria-label={t.controls.send}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-dark disabled:opacity-40"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:bg-brand-dark disabled:opacity-40 sm:h-9 sm:w-9"
           >
             <ArrowUp className="h-5 w-5" />
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[11px] text-muted/80">{t.composer.footer}</p>
+        <p className="mt-1.5 line-clamp-2 text-center text-[11px] text-muted/80">
+          {t.composer.footer}
+        </p>
       </div>
     </div>
   );
@@ -382,13 +448,40 @@ export function ChatShell() {
   useEffect(() => {
     currentLocale = locale;
   }, [locale]);
-  const { messages, sendMessage, setMessages, status, error, regenerate } = useChat({
+  // The open conversation. `id` and `initial` move together in one state update
+  // so useChat always rebuilds its Chat with the matching transcript: the SDK
+  // recreates its internal Chat whenever this `id` changes, which is exactly the
+  // isolation we want — a late chunk from a stream we abandoned lands in the old
+  // instance, which nothing renders and nothing saves.
+  const [chat, setChat] = useState<{ id: string; initial: UIMessage[] }>({
+    id: DRAFT_CHAT_ID,
+    initial: [],
+  });
+  const { messages, sendMessage, status, error, regenerate, stop } = useChat({
+    id: chat.id,
+    messages: chat.initial,
     transport: chatTransport,
   });
   const busy = status === "submitted" || status === "streaming";
   const [cartOpen, setCartOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  // Rehydration can flip the desktop sidebar shut a frame after first paint. If
+  // the width transition were live at that moment, a restored "collapsed"
+  // preference would animate closed on every load; it should just *be* closed.
+  // Enabled a painted frame later, so only real toggles animate.
+  const [animateSidebar, setAnimateSidebar] = useState(false);
+  const activeId = useChats((s) => s.activeId);
+  // Collapsing the desktop sidebar is a preference, so it lives in the persisted
+  // store rather than component state.
+  const sidebarPinned = useChats((s) => s.sidebarPinned);
+  const setSidebarPinned = useChats((s) => s.setSidebarPinned);
+
+  // Only a turn the shopper actually started is worth writing back. Merely
+  // *opening* an old chat must not re-save it — that would bump its updatedAt
+  // and shuffle it to the top of the sidebar just for being read.
+  const dirty = useRef(false);
 
   // The persisted stores skip auto-hydration (so the first client render matches
   // the SSR HTML); rehydrate them once on mount, THEN restore the transcript.
@@ -401,41 +494,98 @@ export function ChatShell() {
       useCart.persist.rehydrate(),
       useProfile.persist.rehydrate(),
       useOrders.persist.rehydrate(),
+      useAccount.persist.rehydrate(),
+      useChats.persist.rehydrate(),
     ]).then(() => {
       if (cancelled) return;
-      try {
-        const raw = localStorage.getItem(CHAT_STORAGE_KEY);
-        const saved = raw ? (JSON.parse(raw) as UIMessage[]) : [];
-        if (Array.isArray(saved) && saved.length) setMessages(saved);
-      } catch {
-        /* corrupt or unavailable storage — start fresh */
+      const chats = useChats.getState();
+
+      // One-time upgrade: the single pre-sessions transcript becomes chat #1,
+      // titled from its opening line, rather than quietly disappearing.
+      // Two frames: one for React to paint the restored layout, one to be sure
+      // it landed before transitions are allowed to run.
+      const settle = () =>
+        requestAnimationFrame(() => requestAnimationFrame(() => setAnimateSidebar(true)));
+
+      const legacy = takeLegacyTranscript();
+      if (legacy.length) {
+        const id = crypto.randomUUID();
+        writeTranscript(id, legacy);
+        chats.start(id, deriveTitle(firstUserText(legacy)));
+        setChat({ id, initial: legacy });
+        setHydrated(true);
+        settle();
+        return;
       }
+
+      const saved = chats.activeId;
+      setChat(
+        saved && chats.sessions.some((s) => s.id === saved)
+          ? { id: saved, initial: loadTranscript(saved) }
+          : { id: crypto.randomUUID(), initial: [] },
+      );
       setHydrated(true);
+      settle();
     });
     return () => {
       cancelled = true;
     };
-  }, [setMessages]);
+  }, []);
 
   // Persist the transcript after each settled turn (skip per-token mid-stream writes).
   useEffect(() => {
-    if (!hydrated || busy) return;
-    try {
-      if (messages.length) localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
-      else localStorage.removeItem(CHAT_STORAGE_KEY);
-    } catch {
-      /* quota exceeded or unavailable — ignore */
-    }
-  }, [messages, busy, hydrated]);
+    if (!hydrated || busy || !dirty.current || !messages.length) return;
+    dirty.current = false;
+    useChats.getState().save(chat.id, messages);
+  }, [messages, busy, hydrated, chat.id]);
 
   // Record every placed order to local history + seed saved details, and apply
   // every agent cart-add to the cart store. Both gated on hydration so a
   // restored transcript is only scanned once the stores can dedupe it.
   useCaptureOrders(messages, hydrated);
   useCaptureCartAdds(messages, hydrated);
+  // Cache the Kapruka display name and seed checkout details from the account.
+  useCaptureAccount(messages, hydrated);
 
   // The transport injects cart/locale/profile at request time (see above).
-  const ask: AskFn = (text) => void sendMessage({ text });
+  // A chat earns its place in the sidebar on its first message — never on "New
+  // chat" — so an opened-and-abandoned conversation leaves nothing behind.
+  const ask: AskFn = (text) => {
+    const chats = useChats.getState();
+    if (chats.sessions.some((s) => s.id === chat.id)) {
+      if (chats.activeId !== chat.id) chats.select(chat.id);
+    } else {
+      chats.start(chat.id, deriveTitle(text));
+    }
+    dirty.current = true;
+    void sendMessage({ text });
+  };
+
+  /** Flush the open chat before leaving it (a turn interrupted mid-stream still counts). */
+  const flush = () => {
+    if (busy) stop();
+    if (dirty.current && messages.length) useChats.getState().save(chat.id, messages);
+    dirty.current = false;
+  };
+
+  const openSession = (id: string) => {
+    setSidebarOpen(false);
+    if (id === chat.id) return;
+    flush();
+    useChats.getState().select(id);
+    setChat({ id, initial: loadTranscript(id) });
+  };
+
+  const deleteSession = (id: string) => {
+    useChats.getState().remove(id);
+    // Deleting the chat you're reading drops you onto a fresh one. Don't flush()
+    // here — the transcript is gone, and re-saving it would recreate the key.
+    if (id === chat.id) {
+      if (busy) stop();
+      dirty.current = false;
+      setChat({ id: crypto.randomUUID(), initial: [] });
+    }
+  };
 
   // Reorder: refill the cart from a past order, then open the cart to review.
   const reorder = (items: OrderLine[]) => {
@@ -447,14 +597,13 @@ export function ChatShell() {
     setCartOpen(true);
   };
 
-  // Start a fresh conversation — clears only the chat; cart, profile, and orders persist.
+  // Start a fresh conversation — the earlier one stays in the sidebar, and the
+  // cart, profile, and orders carry over untouched.
   const newChat = () => {
-    setMessages([]);
-    try {
-      localStorage.removeItem(CHAT_STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+    setSidebarOpen(false);
+    flush();
+    useChats.getState().select(null);
+    setChat({ id: crypto.randomUUID(), initial: [] });
   };
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -465,61 +614,102 @@ export function ChatShell() {
   const lastIsAssistant = messages[messages.length - 1]?.role === "assistant";
 
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="sticky top-0 z-10 border-b border-line bg-cream/80 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
-          <Avatar />
-          <div className="leading-tight">
-            <div className="font-display text-lg">Malee</div>
-            <div className="hidden text-[11px] text-muted sm:block">{t.header.tagline}</div>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand-dark sm:flex">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {t.header.liveCatalogue}
-            </span>
-            <LocaleSwitcher />
-            <ThemeSwitcher />
-            {messages.length > 0 && <NewChatButton onClick={newChat} />}
-            <AccountButton onClick={() => setAccountOpen(true)} />
-            <CartButton onClick={() => setCartOpen(true)} />
-          </div>
-        </div>
-      </header>
+    <div className="flex h-dvh overflow-hidden">
+      <ChatSidebar
+        open={sidebarOpen}
+        pinned={sidebarPinned}
+        ready={animateSidebar}
+        activeId={activeId}
+        onClose={() => setSidebarOpen(false)}
+        onCollapse={() => setSidebarPinned(false)}
+        onNew={newChat}
+        onOpen={openSession}
+        onDelete={deleteSession}
+        onOpenAccount={() => {
+          setSidebarOpen(false);
+          setAccountOpen(true);
+        }}
+      />
 
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
-          {messages.length === 0 ? (
-            <Welcome onPick={ask} onReorder={reorder} />
-          ) : (
-            messages.map((m) => <MessageView key={m.id} message={m} onAsk={ask} />)
-          )}
-          {busy && !lastIsAssistant && (
-            <div className="flex gap-3">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-10 border-b border-line bg-cream/80 backdrop-blur">
+          <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              aria-label={t.controls.openSidebar}
+              className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink transition hover:bg-black/5 lg:hidden"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            {!sidebarPinned && (
+              <button
+                onClick={() => setSidebarPinned(true)}
+                aria-label={t.controls.expandSidebar}
+                title={t.controls.expandSidebar}
+                className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-black/5 hover:text-ink lg:flex"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
+            )}
+            <div className="hidden sm:block">
               <Avatar />
-              <div className="flex items-center gap-1 pt-3">
-                <Dot /> <Dot delay={150} /> <Dot delay={300} />
+            </div>
+            <div className="min-w-0 leading-tight">
+              <div className="font-display text-lg">Malee</div>
+              <div className="hidden truncate text-[11px] text-muted sm:block">
+                {t.header.tagline}
               </div>
             </div>
-          )}
-          {status === "error" && (
-            <div className="flex gap-3">
-              <Avatar />
-              <div className="rounded-2xl rounded-tl-md border border-[#e7c3bb] bg-blush/60 px-4 py-2.5 text-sm text-[#8a3d30]">
-                {error?.message || t.errors.generic}{" "}
-                <button
-                  onClick={() => void regenerate()}
-                  className="font-semibold underline underline-offset-2 hover:opacity-80"
-                >
-                  {t.errors.tryAgain}
-                </button>
-              </div>
+            <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+              <span className="hidden items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-[11px] font-medium text-brand-dark xl:flex">
+                <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {t.header.liveCatalogue}
+              </span>
+              {messages.length > 0 && <NewChatButton onClick={newChat} />}
+              <AccountButton onClick={() => setAccountOpen(true)} />
+              <CartButton onClick={() => setCartOpen(true)} />
             </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
-      </main>
+          </div>
+        </header>
 
-      <Composer onSend={ask} disabled={busy} />
+        <main className="flex-1 overflow-y-auto overscroll-contain">
+          <div className="mx-auto max-w-3xl space-y-5 px-3 py-5 sm:px-4 sm:py-6">
+            {messages.length === 0 ? (
+              <Welcome onPick={ask} onReorder={reorder} onSignIn={() => setAccountOpen(true)} />
+            ) : (
+              messages.map((m) => <MessageView key={m.id} message={m} onAsk={ask} />)
+            )}
+            {busy && !lastIsAssistant && (
+              <div className="flex gap-3">
+                <Avatar />
+                <div className="flex items-center gap-1 pt-3">
+                  <Dot /> <Dot delay={150} /> <Dot delay={300} />
+                </div>
+              </div>
+            )}
+            {status === "error" && (
+              <div className="flex gap-3">
+                <Avatar />
+                <div className="rounded-2xl rounded-tl-md border border-[#e7c3bb] bg-blush/60 px-4 py-2.5 text-sm text-[#8a3d30]">
+                  {error?.message || t.errors.generic}{" "}
+                  <button
+                    onClick={() => {
+                      dirty.current = true;
+                      void regenerate();
+                    }}
+                    className="font-semibold underline underline-offset-2 hover:opacity-80"
+                  >
+                    {t.errors.tryAgain}
+                  </button>
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        </main>
+
+        <Composer onSend={ask} disabled={busy} />
+      </div>
+
       <CartDrawer
         open={cartOpen}
         onClose={() => setCartOpen(false)}
@@ -540,6 +730,10 @@ export function ChatShell() {
           setAccountOpen(false);
           ask(t.prompts.trackNumber(orderNumber));
         }}
+        onAsk={(text) => {
+          setAccountOpen(false);
+          ask(text);
+        }}
       />
     </div>
   );
@@ -552,7 +746,7 @@ function NewChatButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label={t.controls.newChat}
       title={t.controls.newChat}
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-card text-ink transition hover:border-brand"
+      className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-card text-ink transition hover:border-brand sm:h-9 sm:w-9"
     >
       <SquarePen className="h-4 w-4" />
     </button>
@@ -566,7 +760,7 @@ function AccountButton({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       aria-label={t.account.title}
-      className="relative flex h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand"
+      className="relative flex h-10 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand sm:h-9"
     >
       <Receipt className="h-4 w-4" />
       <span className="hidden sm:inline">{t.account.open}</span>
@@ -586,7 +780,7 @@ function CartButton({ onClick }: { onClick: () => void }) {
     <button
       onClick={onClick}
       aria-label={t.controls.openCart}
-      className="relative flex h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand"
+      className="relative flex h-10 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand sm:h-9"
     >
       <ShoppingBag className="h-4 w-4" />
       <span className="hidden sm:inline">{t.cart.label}</span>
@@ -619,123 +813,100 @@ function CartDrawer({
   const currency = items[0]?.price?.currency ?? "LKR";
 
   return (
-    <div
-      className={cn(
-        "fixed inset-0 z-30",
-        open ? "pointer-events-auto" : "pointer-events-none",
-      )}
-      aria-hidden={!open}
-    >
-      <div
-        onClick={onClose}
-        className={cn(
-          "absolute inset-0 bg-black/30 transition-opacity duration-300",
-          open ? "opacity-100" : "opacity-0",
-        )}
-      />
-      <aside
-        className={cn(
-          "absolute right-0 top-0 flex h-full w-full max-w-sm flex-col bg-cream shadow-2xl transition-transform duration-300",
-          open ? "translate-x-0" : "translate-x-full",
-        )}
-      >
-        <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <ShoppingBag className="h-4 w-4 text-brand" />
-          <span className="font-display text-lg">{t.cart.title}</span>
-          <button
-            onClick={onClose}
-            aria-label={t.controls.close}
-            className="ml-auto rounded-full p-1 text-muted hover:bg-black/5"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+    <Sheet open={open} onClose={onClose} label={t.cart.title}>
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <ShoppingBag className="h-4 w-4 text-brand" />
+        <span className="font-display text-lg">{t.cart.title}</span>
+        <button
+          onClick={onClose}
+          aria-label={t.controls.close}
+          className="-mr-1 ml-auto flex h-10 w-10 items-center justify-center rounded-full text-muted hover:bg-black/5 sm:h-8 sm:w-8"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
-        {items.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-muted">
-            <ShoppingBag className="h-8 w-8 opacity-40" />
-            <p className="text-sm">
-              {t.cart.emptyPre}
-              <span className="font-medium text-ink">{t.cards.addToCart}</span>
-              {t.cart.emptyPost}
-            </p>
-          </div>
-        ) : (
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
-            {items.map((i) => (
-              <div key={i.id} className="flex gap-3 rounded-xl border border-line bg-card p-2">
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-blush">
-                  {i.image && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={i.image} alt={i.name} className="h-full w-full object-cover" />
-                  )}
+      {items.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 py-10 text-center text-muted">
+          <ShoppingBag className="h-8 w-8 opacity-40" />
+          <p className="text-sm">
+            {t.cart.emptyPre}
+            <span className="font-medium text-ink">{t.cards.addToCart}</span>
+            {t.cart.emptyPost}
+          </p>
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+          {items.map((i) => (
+            <div key={i.id} className="flex gap-3 rounded-xl border border-line bg-card p-2">
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-blush">
+                {i.image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={i.image} alt={i.name} className="h-full w-full object-cover" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-2 text-sm font-medium">{i.name}</div>
+                <div className="text-xs text-brand-dark">
+                  {formatPrice(i.price?.amount, i.price?.currency)}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="line-clamp-2 text-sm font-medium">{i.name}</div>
-                  <div className="text-xs text-brand-dark">
-                    {formatPrice(i.price?.amount, i.price?.currency)}
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <button
-                      onClick={() => setQty(i.id, i.quantity - 1)}
-                      aria-label={t.controls.decreaseQty}
-                      className="flex h-6 w-6 items-center justify-center rounded-full border border-line hover:bg-black/5"
-                    >
-                      <Minus className="h-3 w-3" />
-                    </button>
-                    <span className="w-5 text-center text-sm">{i.quantity}</span>
-                    <button
-                      onClick={() => setQty(i.id, i.quantity + 1)}
-                      aria-label={t.controls.increaseQty}
-                      className="flex h-6 w-6 items-center justify-center rounded-full border border-line hover:bg-black/5"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={() => remove(i.id)}
-                      aria-label={t.controls.remove}
-                      className="ml-auto rounded-full p-1 text-muted hover:text-[#b4503f]"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <button
+                    onClick={() => setQty(i.id, i.quantity - 1)}
+                    aria-label={t.controls.decreaseQty}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-line hover:bg-black/5 sm:h-6 sm:w-6"
+                  >
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <span className="w-5 text-center text-sm">{i.quantity}</span>
+                  <button
+                    onClick={() => setQty(i.id, i.quantity + 1)}
+                    aria-label={t.controls.increaseQty}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-line hover:bg-black/5 sm:h-6 sm:w-6"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                  <button
+                    onClick={() => remove(i.id)}
+                    aria-label={t.controls.remove}
+                    className="ml-auto flex h-8 w-8 items-center justify-center rounded-full text-muted hover:text-[#b4503f]"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
-            ))}
-            <button
-              onClick={clear}
-              className="text-xs text-muted underline-offset-2 hover:underline"
-            >
-              {t.cart.clear}
-            </button>
-          </div>
-        )}
-
-        {items.length > 0 && (
-          <div className="border-t border-line p-4">
-            <div className="mb-3 flex items-center justify-between text-sm">
-              <span className="text-muted">{t.cart.subtotal}</span>
-              <span className="font-display text-lg text-brand-dark">
-                {formatPrice(subtotal, currency)}
-              </span>
             </div>
-            <button
-              onClick={onSuggest}
-              className="mb-2 flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-xs font-semibold text-ink transition hover:border-brand hover:text-brand-dark"
-            >
-              <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.cart.suggestAddons}
-            </button>
-            <button
-              onClick={onCheckout}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
-            >
-              <ShoppingBag className="h-4 w-4" /> {t.cart.checkout}
-            </button>
-            <p className="mt-2 text-center text-[11px] text-muted">{t.cart.deliveryNote}</p>
+          ))}
+          <button onClick={clear} className="text-xs text-muted underline-offset-2 hover:underline">
+            {t.cart.clear}
+          </button>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="safe-bottom shrink-0 border-t border-line p-4">
+          <div className="mb-3 flex items-center justify-between text-sm">
+            <span className="text-muted">{t.cart.subtotal}</span>
+            <span className="font-display text-lg text-brand-dark">
+              {formatPrice(subtotal, currency)}
+            </span>
           </div>
-        )}
-      </aside>
-    </div>
+          <button
+            onClick={onSuggest}
+            className="mb-2 flex w-full items-center justify-center gap-2 rounded-full border border-line py-2.5 text-xs font-semibold text-ink transition hover:border-brand hover:text-brand-dark"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-accent" /> {t.cart.suggestAddons}
+          </button>
+          <button
+            onClick={onCheckout}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+          >
+            <ShoppingBag className="h-4 w-4" /> {t.cart.checkout}
+          </button>
+          <p className="mt-2 text-center text-[11px] text-muted">{t.cart.deliveryNote}</p>
+        </div>
+      )}
+    </Sheet>
   );
 }
 

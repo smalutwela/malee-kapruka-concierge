@@ -185,6 +185,13 @@ const READ_TTL_MS: Record<string, number> = {
   kapruka_list_delivery_cities: 30 * 60_000,
   kapruka_get_product: 5 * 60_000,
   kapruka_search_products: 2 * 60_000,
+  // Phase 2 account tools. A profile and an address book barely move; order
+  // history can gain a row mid-conversation, so it gets a short leash. All three
+  // are read-only, so caching is safe — and it keeps a chatty account flow
+  // (greet → history → addresses → reorder) well inside the 60 req/min budget.
+  kapruka_customer_details: 10 * 60_000,
+  kapruka_customer_addresses: 10 * 60_000,
+  kapruka_order_history: 60_000,
 };
 const MAX_CACHE_ENTRIES = 200;
 const responseCache = new Map<string, { at: number; value: ToolResult }>();

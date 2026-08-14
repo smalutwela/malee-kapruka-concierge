@@ -7,8 +7,20 @@
  *
  * Creating an order is safe: it only mints a click-to-pay URL; no money moves
  * until a human opens the link and pays. It counts against the 30 orders/hr limit.
+ *
+ * When KAPRUKA_ACCESS_TOKEN is set (see .env.local), the Phase 2 customer tools
+ * are exercised too — including the normalizers, which are what stand between
+ * the backend's raw payloads and the UI.
  */
+import { config as loadEnv } from "dotenv";
 import { callTool, type ToolResult } from "../lib/mcp";
+import {
+  normalizeAddresses,
+  normalizeCustomer,
+  normalizeOrderHistory,
+} from "../lib/account/normalize";
+
+loadEnv({ path: ".env.local", quiet: true });
 
 function section(title: string) {
   console.log(`\n${"=".repeat(64)}\n${title}\n${"=".repeat(64)}`);
@@ -33,6 +45,70 @@ function unwrap(res: ToolResult, label: string): any {
     return null;
   }
   return res.json;
+}
+
+/** The account email the preview backend serves data for. */
+const TEST_EMAIL = "sandaru.perera@gmail.com";
+
+function check(label: string, ok: boolean, detail = ""): void {
+  console.log(`  ${ok ? "✓" : "✗"} ${label}${detail ? ` — ${detail}` : ""}`);
+  if (!ok) process.exitCode = 1;
+}
+
+/**
+ * Phase 2 customer tools. Beyond "did it respond", this asserts the
+ * normalizers actually scrub the backend's artefacts — the "<BR" welded to every
+ * phone number, ALL-CAPS names, junk in product names, and the duplicate
+ * addresses. Those are silent-regression territory, so they get real assertions.
+ */
+async function phase2(): Promise<void> {
+  const token = process.env.KAPRUKA_ACCESS_TOKEN;
+  section("6. Phase 2 customer tools (private preview)");
+  if (!token) {
+    console.log("  ⚠ KAPRUKA_ACCESS_TOKEN not set — skipping. Add it to .env.local to cover these.");
+    return;
+  }
+  const args = { email: TEST_EMAIL, access_token: token };
+
+  const customer = normalizeCustomer(unwrap(await callTool("kapruka_customer_details", args), "customer"), TEST_EMAIL);
+  console.log(`  customer: ${customer?.fullName} · ${customer?.phone} · ${customer?.language}`);
+  check("profile parsed", Boolean(customer?.fullName));
+  check("phone has no HTML scrap", !/[<>]/.test(customer?.phone ?? ""), customer?.phone ?? "");
+
+  const history = normalizeOrderHistory(
+    unwrap(await callTool("kapruka_order_history", { ...args, limit: 10 }), "history"),
+  );
+  const orders = history?.orders ?? [];
+  console.log(`  orders: ${orders.length}`);
+  for (const o of orders.slice(0, 3)) {
+    console.log(`    ${o.reference} ${o.statusLabel} ${o.orderedAt} → ${o.deliveryDate} · ${o.items.length} item(s)`);
+  }
+  check("order history parsed", orders.length > 0);
+  check(
+    "order dates are ISO",
+    orders.every((o) => !o.orderedAt || /^\d{4}-\d{2}-\d{2}$/.test(o.orderedAt)),
+  );
+  const names = orders.flatMap((o) => o.items.map((i) => i.name));
+  check("product names are clean", !names.some((n) => /\.jpg|#[A-Z]{3,}|`|^\w+\[/i.test(n)));
+  check(
+    "recipient phones are clean",
+    !orders.some((o) => /[<>]/.test(o.recipient?.phone ?? "")),
+  );
+
+  const book = normalizeAddresses(
+    unwrap(await callTool("kapruka_customer_addresses", args), "addresses"),
+    TEST_EMAIL,
+    customer?.fullName ?? null,
+  );
+  const addresses = book?.addresses ?? [];
+  for (const a of addresses) console.log(`    [${a.saved ? "saved " : "recent"}] ${a.label}: ${a.address}, ${a.city}`);
+  check("addresses parsed", addresses.length > 0);
+  check("addresses de-duplicated", new Set(addresses.map((a) => `${a.name}|${a.address}|${a.city}`.toLowerCase())).size === addresses.length);
+  check("a home/office label was inferred", addresses.some((a) => a.label === "Home" || a.label === "Office"));
+
+  // The lookup must fail closed for any other account.
+  const denied = await callTool("kapruka_customer_details", { ...args, email: "not.a.customer@example.com" });
+  check("unknown email is refused by the server", /error/i.test(String(denied.json ?? denied.text)));
 }
 
 async function main() {
@@ -80,12 +156,14 @@ async function main() {
   if (delivery?.reason) console.log(`  reason:    ${delivery.reason}`);
   if (delivery?.perishable_warning) console.log(`  ⚠ perishable: ${delivery.perishable_warning}`);
 
+  await phase2();
+
   if (!runOrder) {
     section("DONE (read-only). Re-run with `-- --order` to exercise create_order.");
     return;
   }
 
-  section("6. create_order  (real guest checkout link)");
+  section("7. create_order  (real guest checkout link)");
   const order = unwrap(
     await callTool("kapruka_create_order", {
       cart: [{ product_id: product.id, quantity: 1 }],
