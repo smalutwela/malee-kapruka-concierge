@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import type { UIMessage } from "ai";
-import { ArrowUp, Flower2, Loader2, Menu, Minus, PanelLeftOpen, Plus, Receipt, RotateCcw, ShoppingBag, Sparkles, SquarePen, Trash2, UserRound, X } from "lucide-react";
+import { ArrowUp, Flower2, Loader2, Menu, Minus, PanelLeftOpen, Plus, RotateCcw, ShoppingBag, Sparkles, SquarePen, Trash2, UserRound, X } from "lucide-react";
 import {
   AccountProfileCard,
   AddressBookCard,
@@ -347,16 +347,36 @@ function Welcome({
             </span>
           </button>
         )}
-        <button
-          onClick={() => (accountEmail ? onPick(t.prompts.myOrders) : onSignIn())}
-          className="flex max-w-full items-center gap-2.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
-        >
-          <UserRound className="h-4 w-4 shrink-0 text-brand" />
-          <span className="truncate">{t.welcome.signIn}</span>
-        </button>
+        {accountEmail ? (
+          <button
+            onClick={() => onPick(t.prompts.myOrders)}
+            className="flex max-w-full items-center gap-2.5 rounded-full border border-line bg-card px-4 py-2 text-sm font-medium text-ink shadow-sm transition hover:border-brand hover:text-brand-dark"
+          >
+            <UserRound className="h-4 w-4 shrink-0 text-brand" />
+            <span className="truncate">{t.welcome.signIn}</span>
+          </button>
+        ) : (
+          // Signed out this is not a shortcut, it's a pitch — so it leaves the
+          // pill shape behind entirely. As a rounded chip it read as a seventh
+          // category next to Groceries/Electronics/…, which is the one thing
+          // it must not look like.
+          <button
+            onClick={onSignIn}
+            className="flex w-full max-w-md items-center gap-3 rounded-2xl border border-brand/40 bg-brand/5 px-4 py-3 text-left shadow-sm transition hover:border-brand hover:bg-brand/10"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+              <UserRound className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-ink">{t.welcome.signInTitle}</span>
+              <span className="block text-xs text-muted">{t.welcome.signInSub}</span>
+            </span>
+            <ArrowUp className="h-4 w-4 shrink-0 rotate-45 text-brand" />
+          </button>
+        )}
       </div>
 
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
         {MODE_KEYS.map((key) => (
           <button
             key={key}
@@ -665,6 +685,9 @@ export function ChatShell() {
                 <span className="h-1.5 w-1.5 rounded-full bg-brand" /> {t.header.liveCatalogue}
               </span>
               {messages.length > 0 && <NewChatButton onClick={newChat} />}
+              {/* One account control, two faces: an explicit "Sign in" while
+                  signed out, the shopper's own initial once they are. Both open
+                  the same sheet, so the header count never changes. */}
               <AccountButton onClick={() => setAccountOpen(true)} />
               <CartButton onClick={() => setCartOpen(true)} />
             </div>
@@ -753,16 +776,46 @@ function NewChatButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+/**
+ * The header account control — the top-right corner people scan for auth.
+ *
+ * Signed out it says **Sign in**, in words, at every breakpoint: the label is
+ * the whole point, so it never collapses to an icon the way Orders/Cart do.
+ * Signed in it becomes the shopper's initial, and the receipt label returns.
+ * Either way it opens the one account sheet, so the header keeps three buttons.
+ */
 function AccountButton({ onClick }: { onClick: () => void }) {
   const t = useT();
   const count = useOrders((s) => s.orders.length);
+  const email = useAccount((s) => s.email);
+  const name = useAccount((s) => s.name);
+
+  if (!email) {
+    return (
+      <button
+        onClick={onClick}
+        aria-label={t.header.signInLabel}
+        className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-brand px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark sm:h-9"
+      >
+        <UserRound className="h-4 w-4" />
+        {t.header.signIn}
+      </button>
+    );
+  }
+
+  // The initial: first letter of the cached display name, else of the email.
+  const initial = (name || email).trim().charAt(0).toUpperCase();
+
   return (
     <button
       onClick={onClick}
       aria-label={t.account.title}
-      className="relative flex h-10 items-center gap-1.5 rounded-full border border-line bg-card px-3 text-sm font-medium text-ink transition hover:border-brand sm:h-9"
+      title={name || email}
+      className="relative flex h-10 items-center gap-1.5 rounded-full border border-line bg-card py-0 pl-1 pr-1 text-sm font-medium text-ink transition hover:border-brand sm:h-9 sm:pr-3"
     >
-      <Receipt className="h-4 w-4" />
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/15 font-display text-sm text-brand-dark sm:h-7 sm:w-7">
+        {initial}
+      </span>
       <span className="hidden sm:inline">{t.account.open}</span>
       {count > 0 && (
         <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1 text-[11px] font-bold text-white">

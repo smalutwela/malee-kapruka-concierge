@@ -10,6 +10,7 @@ import {
   Receipt,
   RotateCcw,
   ShoppingBag,
+  Sparkles,
   Trash2,
   Truck,
   User,
@@ -19,7 +20,7 @@ import {
 import { cn, formatPrice } from "@/lib/utils";
 import { Sheet } from "@/components/sheet";
 import { useT, useLocale } from "@/lib/i18n/context";
-import { useAccount } from "@/lib/account/store";
+import { DEMO_EMAIL, useAccount } from "@/lib/account/store";
 import { useProfile, type BuyerDetails } from "@/lib/profile/store";
 import { useOrders, type OrderLine, type OrderRecord } from "@/lib/orders/store";
 
@@ -110,8 +111,8 @@ function SignInSection({ onAsk }: { onAsk: (text: string) => void }) {
   const [value, setValue] = useState("");
   const [invalid, setInvalid] = useState(false);
 
-  function submit() {
-    const clean = value.trim();
+  function submit(email = value) {
+    const clean = email.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
       setInvalid(true);
       return;
@@ -178,7 +179,7 @@ function SignInSection({ onAsk }: { onAsk: (text: string) => void }) {
               )}
             />
             <button
-              onClick={submit}
+              onClick={() => submit()}
               disabled={!value.trim()}
               className="shrink-0 rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-dark disabled:opacity-40"
             >
@@ -186,7 +187,20 @@ function SignInSection({ onAsk }: { onAsk: (text: string) => void }) {
             </button>
           </div>
           {invalid && <p className="text-[11px] text-[#b4503f]">{t.account.signInInvalid}</p>}
-          <p className="text-[11px] text-muted/80">{t.account.signInDemo}</p>
+          {/* The preview backend serves one address only, so this is the path
+              that actually works — a button, not a caption to retype by hand. */}
+          <button
+            onClick={() => submit(DEMO_EMAIL)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-dashed border-brand/40 px-3 py-1.5 text-left transition hover:border-brand hover:bg-brand/5 sm:min-h-0"
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-ink">
+                {t.account.signInDemoAction}
+              </span>
+              <span className="block truncate font-mono text-[11px] text-muted">{DEMO_EMAIL}</span>
+            </span>
+          </button>
         </div>
       )}
     </section>

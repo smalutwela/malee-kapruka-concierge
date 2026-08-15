@@ -16,6 +16,10 @@ const en = {
   header: {
     tagline: "Kapruka Shopping Concierge",
     liveCatalogue: "Live catalogue",
+    // The header account control. Signed out it must literally say "sign in" —
+    // that is the word people scan the top-right corner for.
+    signIn: "Sign in",
+    signInLabel: "Sign in to your Kapruka account",
   },
   controls: {
     changeTheme: "Change theme",
@@ -85,7 +89,11 @@ const en = {
       "Ammata birthday cake ekak yawanna ona — Kandy walata",
     ],
     reorderLast: "Reorder my usual",
+    // Signed in, the chip jumps straight to the real history. Signed out it has
+    // to sell the sign-in, so it leads with the action and states the payoff.
     signIn: "See my Kapruka orders",
+    signInTitle: "Sign in to Kapruka",
+    signInSub: "Your real orders, saved address, one-tap reorder",
   },
   composer: {
     placeholder: "Message Malee… (e.g. restock my kitchen, or flowers for amma)",
@@ -156,7 +164,9 @@ const en = {
     signInHint:
       "Sign in with your Kapruka email to see your real orders, reuse a saved address, and reorder in one tap.",
     signInPlaceholder: "you@example.com",
-    signInDemo: "Demo account: sandaru.perera@gmail.com",
+    // The preview backend serves exactly one address, so this is a real
+    // one-tap action rather than a caption nobody reads (see DEMO_EMAIL).
+    signInDemoAction: "Try the demo account",
     signInAction: "Sign in",
     signInInvalid: "That doesn't look like an email address.",
     signedInAs: (name: string) => `Signed in as ${name}`,
@@ -253,6 +263,8 @@ const si: Messages = {
   header: {
     tagline: "Kapruka සාප්පු උපදේශක",
     liveCatalogue: "සජීවී නාමාවලිය",
+    signIn: "පිවිසෙන්න",
+    signInLabel: "ඔබේ Kapruka ගිණුමට පිවිසෙන්න",
   },
   controls: {
     changeTheme: "තේමාව වෙනස් කරන්න",
@@ -318,6 +330,8 @@ const si: Messages = {
     ],
     reorderLast: "පෙර ඇණවුම නැවත ගන්න",
     signIn: "මගේ Kapruka ඇණවුම් බලන්න",
+    signInTitle: "Kapruka ගිණුමට පිවිසෙන්න",
+    signInSub: "ඔබේ සැබෑ ඇණවුම්, සුරැකි ලිපිනය, එක් තට්ටුවකින් නැවත ඇණවුම",
   },
   composer: {
     placeholder: "Malee හට පණිවිඩයක්… (උදා: කුස්සිය පුරවන්න, නැත්නම් අම්මට මල්)",
@@ -381,7 +395,7 @@ const si: Messages = {
     signInHint:
       "ඔබේ Kapruka ඊමේල් එකෙන් පිවිසෙන්න — ඔබේ සැබෑ ඇණවුම්, සුරැකි ලිපින සහ එක් ස්පර්ශයකින් නැවත ඇණවුම් කිරීම ලබා ගන්න.",
     signInPlaceholder: "you@example.com",
-    signInDemo: "නිදසුන් ගිණුම: sandaru.perera@gmail.com",
+    signInDemoAction: "නිදසුන් ගිණුම අත්හදා බලන්න",
     signInAction: "පිවිසෙන්න",
     signInInvalid: "එය ඊමේල් ලිපිනයක් වගේ නෑ.",
     signedInAs: (name: string) => `${name} ලෙස පිවිසී ඇත`,
@@ -472,6 +486,8 @@ const ta: Messages = {
   header: {
     tagline: "Kapruka ஷாப்பிங் உதவியாளர்",
     liveCatalogue: "நேரடி பட்டியல்",
+    signIn: "உள்நுழை",
+    signInLabel: "உங்கள் Kapruka கணக்கில் உள்நுழையவும்",
   },
   controls: {
     changeTheme: "தீம் மாற்று",
@@ -537,6 +553,8 @@ const ta: Messages = {
     ],
     reorderLast: "முந்தைய ஆர்டரை மீண்டும்",
     signIn: "என் Kapruka ஆர்டர்களைப் பார்",
+    signInTitle: "Kapruka கணக்கில் உள்நுழையவும்",
+    signInSub: "உங்கள் உண்மையான ஆர்டர்கள், சேமித்த முகவரி, ஒரே தட்டில் மறு ஆர்டர்",
   },
   composer: {
     placeholder: "Malee க்கு செய்தி… (எ.கா: சமையலறையை நிரப்பு, அல்லது அம்மாவுக்கு மலர்கள்)",
@@ -600,7 +618,7 @@ const ta: Messages = {
     signInHint:
       "உங்கள் Kapruka மின்னஞ்சலால் உள்நுழையுங்கள் — உண்மையான ஆர்டர்கள், சேமித்த முகவரிகள், ஒரே தட்டலில் மீண்டும் ஆர்டர்.",
     signInPlaceholder: "you@example.com",
-    signInDemo: "மாதிரிக் கணக்கு: sandaru.perera@gmail.com",
+    signInDemoAction: "மாதிரிக் கணக்கை முயற்சிக்கவும்",
     signInAction: "உள்நுழை",
     signInInvalid: "அது மின்னஞ்சல் முகவரி போல் தெரியவில்லை.",
     signedInAs: (name: string) => `${name} ஆக உள்நுழைந்துள்ளீர்கள்`,

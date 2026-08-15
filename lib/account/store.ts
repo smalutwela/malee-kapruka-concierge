@@ -2,6 +2,14 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 /**
+ * The one address the Phase 2 preview backend serves — every other email comes
+ * back `email_not_allowed`. Offered as a one-tap sign-in so an evaluator can
+ * reach the account features without knowing that; it is still *typed into* the
+ * same field, so the server-side allowlist sees it as shopper-supplied.
+ */
+export const DEMO_EMAIL = "sandaru.perera@gmail.com";
+
+/**
  * Who the shopper is on Kapruka — the key that unlocks the Phase 2 account
  * tools (profile, order history, saved addresses).
  *
