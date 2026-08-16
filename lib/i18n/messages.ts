@@ -331,7 +331,7 @@ const si: Messages = {
     reorderLast: "පෙර ඇණවුම නැවත ගන්න",
     signIn: "මගේ Kapruka ඇණවුම් බලන්න",
     signInTitle: "Kapruka ගිණුමට පිවිසෙන්න",
-    signInSub: "ඔබේ සැබෑ ඇණවුම්, සුරැකි ලිපිනය, එක් තට්ටුවකින් නැවත ඇණවුම",
+    signInSub: "ඔබේ සැබෑ ඇණවුම්, සුරැකි ලිපිනය, නැවත ඇණවුම්",
   },
   composer: {
     placeholder: "Malee හට පණිවිඩයක්… (උදා: කුස්සිය පුරවන්න, නැත්නම් අම්මට මල්)",

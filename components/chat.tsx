@@ -334,11 +334,15 @@ function Welcome({
       </h2>
       <p className="mt-2 max-w-md text-[15px] text-muted">{t.welcome.subtitle}</p>
 
-      <div className="mt-6 flex max-w-md flex-col items-center gap-2">
+      {/* w-full matters: without a definite width here, the column sizes to the
+          reorder chip's max-content (a long item list), the chip's max-w-full
+          resolves against that, truncate never kicks in — and the page picks up
+          a horizontal scrollbar on a phone. */}
+      <div className="mt-6 flex w-full max-w-md flex-col items-center gap-2">
         {lastOrder && lastOrder.items.length > 0 && (
           <button
             onClick={() => onReorder(lastOrder.items)}
-            className="flex max-w-full items-center gap-2.5 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-medium text-brand-dark shadow-sm transition hover:border-brand hover:bg-brand/15"
+            className="flex max-w-full items-center gap-2.5 overflow-hidden rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-medium text-brand-dark shadow-sm transition hover:border-brand hover:bg-brand/15"
           >
             <RotateCcw className="h-4 w-4 shrink-0" />
             <span className="shrink-0">{t.welcome.reorderLast}</span>
