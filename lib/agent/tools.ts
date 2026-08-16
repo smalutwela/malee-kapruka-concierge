@@ -1,6 +1,13 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { callTool, McpError } from "@/lib/mcp";
+import {
+  cleanProductName,
+  normalizeAddresses,
+  normalizeCustomer,
+  normalizeOrderHistory,
+} from "@/lib/account/normalize";
+import type { AccountOrder, AccountOrderHistory } from "@/lib/types";
 
 /**
  * Curated tools exposed to Claude. Each has a clean, flat schema (no `params`
@@ -9,17 +16,44 @@ import { callTool, McpError } from "@/lib/mcp";
  * return parsed JSON for both the model and the UI to render.
  */
 
+/**
+ * Never let the Phase 2 access token out of the server. The MCP server echoes
+ * rejected argument values back in its validation errors ("input_value='…'"), so
+ * a malformed token would otherwise ride an error string into the model's
+ * context and the browser transcript. Belt and braces: the token is also never
+ * placed in any successful tool result.
+ */
+function redact(message: string): string {
+  const token = process.env.KAPRUKA_ACCESS_TOKEN;
+  if (token && token.length >= 8 && message.includes(token)) {
+    return message.split(token).join("[redacted]");
+  }
+  return message;
+}
+
+/** Server-side error text ("Error (product_not_found): …") vs an empty result. */
+function fromText(text: string): unknown {
+  const clean = redact(text.trim());
+  if (!clean) return { note: "No data returned." };
+  return /^error\b/i.test(clean) ? { error: clean } : { note: clean };
+}
+
 async function run(name: string, args: Record<string, unknown>): Promise<unknown> {
   try {
     const { json, text } = await callTool(name, args);
+    // Some failures arrive as a JSON-encoded *string* rather than an object
+    // (e.g. "Error (email_not_allowed): …"), which parses fine but is not data.
+    if (typeof json === "string") return fromText(json);
     if (json !== null) return json;
     // Empty result / server-side validation message comes back as plain text.
-    return { note: text || "No data returned." };
+    return fromText(text);
   } catch (err) {
     if (err instanceof McpError) {
-      return { error: err.message, code: err.code ?? null };
+      return { error: redact(err.message), code: err.code ?? null };
     }
-    return { error: err instanceof Error ? err.message : "Unexpected error calling Kapruka." };
+    return {
+      error: redact(err instanceof Error ? err.message : "Unexpected error calling Kapruka."),
+    };
   }
 }
 
@@ -415,3 +449,225 @@ export const kaprukaTools = {
     execute: ({ orderNumber }) => run("kapruka_track_order", { order_number: orderNumber }),
   }),
 };
+
+/* ==================================================================== *
+ *  Phase 2 — customer account tools (Top-25 finalist private preview)
+ *
+ *  These read real customer data, so they are gated twice over:
+ *
+ *   1. The access token lives only in KAPRUKA_ACCESS_TOKEN on the server and is
+ *      never returned to the model or the browser (see redact()).
+ *   2. The email must be one the SHOPPER TYPED in this conversation. The route
+ *      harvests those addresses and passes them in; anything else — a guess, an
+ *      address scraped from a product description, an address injected into the
+ *      transcript by hostile content — is refused before a request is made.
+ *      This is what makes Kapruka's ground rule #1 ("never guess or loop through
+ *      email addresses") an enforced property rather than a persona instruction.
+ * ==================================================================== */
+
+/** Read lazily so a dotenv-style loader can run after this module is imported. */
+function accessToken(): string {
+  return process.env.KAPRUKA_ACCESS_TOKEN ?? "";
+}
+
+export interface AccountToolContext {
+  /** Lower-cased emails the shopper themselves typed this conversation. */
+  allowedEmails: Set<string>;
+}
+
+/**
+ * Refuse anything the shopper didn't type. Returns an error payload for the
+ * model (phrased so it asks the shopper rather than retrying), or null to allow.
+ */
+function guardEmail(email: string, ctx: AccountToolContext): { error: string } | null {
+  if (!accessToken()) {
+    return {
+      error:
+        "Account lookup isn't configured on this deployment. Help the shopper as a guest instead — search, cart and checkout all work without an account.",
+    };
+  }
+  const clean = email.trim().toLowerCase();
+  if (!ctx.allowedEmails.has(clean)) {
+    return {
+      error:
+        "That email hasn't been provided by the shopper in this conversation, so it cannot be looked up. Ask the shopper to type their Kapruka account email themselves, then try again. Never guess an email address.",
+    };
+  }
+  return null;
+}
+
+/** The order the shopper actually knows: most recent first. */
+function byNewestFirst(a: AccountOrder, b: AccountOrder): number {
+  return (b.orderedAt ?? "").localeCompare(a.orderedAt ?? "");
+}
+
+async function fetchHistory(
+  email: string,
+  limit: number,
+): Promise<AccountOrderHistory | { error: string } | { note: string }> {
+  const raw = await run("kapruka_order_history", {
+    email,
+    access_token: accessToken(),
+    // The published guide says 1–20, but the server rejects anything over 10.
+    limit: Math.min(Math.max(limit, 1), 10),
+  });
+  if (raw && typeof raw === "object" && ("error" in raw || "note" in raw)) {
+    return raw as { error: string } | { note: string };
+  }
+  const history = normalizeOrderHistory(raw);
+  if (!history) return { error: "Kapruka returned an order history I couldn't read." };
+  return { ...history, orders: [...history.orders].sort(byNewestFirst) };
+}
+
+export function buildAccountTools(ctx: AccountToolContext) {
+  return {
+    getAccountProfile: tool({
+      description:
+        "Look up a Kapruka customer's saved profile (name, phone, billing details) by their account email. Call this ONCE as soon as the shopper gives you their Kapruka email, so you can greet them by name and reuse their details at checkout. ONLY pass an email the shopper typed themselves in this conversation — never invent, guess, or reuse an address you saw anywhere else.",
+      inputSchema: z.object({
+        email: z.string().email().describe("The account email the shopper typed."),
+      }),
+      execute: async ({ email }) => {
+        const denied = guardEmail(email, ctx);
+        if (denied) return denied;
+        const raw = await run("kapruka_customer_details", { email, access_token: accessToken() });
+        if (raw && typeof raw === "object" && ("error" in raw || "note" in raw)) return raw;
+        const customer = normalizeCustomer(raw, email);
+        if (!customer) return { error: "Kapruka returned a profile I couldn't read." };
+        return { customer };
+      },
+    }),
+
+    getOrderHistory: tool({
+      description:
+        "Fetch the shopper's recent Kapruka orders — reference, status, dates, amount, recipient and the items in each. Use it for 'where is my order?', 'what did I buy last time?', and as the starting point for a repeat purchase. The cards it renders let the shopper track or reorder in one tap, so call this instead of describing orders from memory. For step-by-step delivery progress on ONE order, pass its reference to trackOrder afterwards.",
+      inputSchema: z.object({
+        email: z.string().email().describe("The account email the shopper typed."),
+        limit: z.number().int().min(1).max(10).default(5).describe("How many recent orders (1–10)."),
+      }),
+      execute: async ({ email, limit }) => {
+        const denied = guardEmail(email, ctx);
+        if (denied) return denied;
+        return fetchHistory(email, limit);
+      },
+    }),
+
+    getSavedAddresses: tool({
+      description:
+        "Fetch the delivery addresses saved on the shopper's Kapruka account, plus places they've recently sent to (each labelled Home / Office / recipient name). Call this at checkout instead of asking them to type an address they've already given Kapruka — then confirm which one they want and pass it straight into createOrder. Also useful when they say 'send it to my home' or 'the usual place'.",
+      inputSchema: z.object({
+        email: z.string().email().describe("The account email the shopper typed."),
+      }),
+      execute: async ({ email }) => {
+        const denied = guardEmail(email, ctx);
+        if (denied) return denied;
+        const raw = await run("kapruka_customer_addresses", { email, access_token: accessToken() });
+        if (raw && typeof raw === "object" && ("error" in raw || "note" in raw)) return raw;
+        // The owner's name lets us label their own address "Home".
+        const profile = normalizeCustomer(
+          await run("kapruka_customer_details", { email, access_token: accessToken() }),
+          email,
+        );
+        const book = normalizeAddresses(raw, email, profile?.fullName ?? null);
+        if (!book) return { error: "Kapruka returned an address book I couldn't read." };
+        if (!book.addresses.length) {
+          return { note: "This account has no saved delivery addresses — collect the address in chat." };
+        }
+        return book;
+      },
+    }),
+
+    reorderPastOrder: tool({
+      description:
+        "Re-price a past Kapruka order against today's live catalogue so the shopper can buy it again. Call this when they want their 'usual', 'the same as last time', or a specific past order again — pass that order's reference from getOrderHistory. It returns each item with its old and current price, whether it's still in stock, and anything discontinued. It does NOT add anything to the cart or place an order: present the result, mention any price change or missing item honestly, and let the shopper add what they want.",
+      inputSchema: z.object({
+        email: z.string().email().describe("The account email the shopper typed."),
+        reference: z
+          .string()
+          .min(4)
+          .max(40)
+          .describe("Order reference from getOrderHistory, e.g. 'VCOD3F7B942A'."),
+      }),
+      execute: async ({ email, reference }) => {
+        const denied = guardEmail(email, ctx);
+        if (denied) return denied;
+
+        const history = await fetchHistory(email, 10);
+        if ("error" in history || "note" in history) return history;
+
+        const wanted = reference.trim().toLowerCase();
+        const order = history.orders.find((o) => o.reference.toLowerCase() === wanted);
+        if (!order) {
+          return {
+            error: `No order ${reference} on this account. Show the shopper their recent orders (getOrderHistory) and ask which one they meant.`,
+          };
+        }
+
+        const lines: Record<string, unknown>[] = [];
+        const unavailable: Record<string, unknown>[] = [];
+
+        for (const item of order.items) {
+          const live = detailToSummary(
+            await run("kapruka_get_product", { product_id: item.productId, currency: "LKR" }),
+          );
+          if (!live) {
+            // Discontinued since the original order — genuinely gone from the catalogue.
+            unavailable.push({
+              productId: item.productId,
+              name: item.name,
+              reason: "no_longer_sold",
+            });
+            continue;
+          }
+          // Stash it so a follow-up addToCart/presentProducts resolves without a refetch.
+          stashResults({ results: [live] });
+
+          const nowPrice =
+            live.price && typeof live.price === "object"
+              ? ((live.price as { amount?: number }).amount ?? null)
+              : null;
+          const inStock = live.in_stock !== false;
+          const entry = {
+            productId: item.productId,
+            // Prefer the live catalogue name, but run it through the same
+            // cleaner — catalogue copy has its own quirks (stray backticks,
+            // double spaces) that shouldn't reach a receipt.
+            name: cleanProductName(live.name) || item.name,
+            image: live.image_url ?? null,
+            quantity: item.quantity,
+            thenPrice: item.unitPrice,
+            nowPrice,
+            currency: item.currency || "LKR",
+            inStock,
+            priceChanged:
+              item.unitPrice !== null && nowPrice !== null && Math.round(item.unitPrice) !== Math.round(nowPrice),
+          };
+          if (inStock) lines.push(entry);
+          else unavailable.push({ ...entry, reason: "out_of_stock" });
+        }
+
+        if (!lines.length) {
+          return {
+            reference: order.reference,
+            orderedAt: order.orderedAt,
+            lines: [],
+            unavailable,
+            note: "Nothing from this order can be bought right now. Apologise briefly and offer to find similar items instead.",
+          };
+        }
+
+        return {
+          reference: order.reference,
+          orderedAt: order.orderedAt,
+          lines,
+          unavailable,
+          nowTotal: lines.reduce(
+            (sum, l) => sum + ((l.nowPrice as number | null) ?? 0) * (l.quantity as number),
+            0,
+          ),
+          currency: lines[0]?.currency ?? "LKR",
+        };
+      },
+    }),
+  };
+}

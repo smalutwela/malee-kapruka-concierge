@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { Check, Palette } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n/context";
 
 const THEMES = [
@@ -44,7 +45,8 @@ function applyTheme(id: string) {
   listeners.forEach((notify) => notify());
 }
 
-export function ThemeSwitcher() {
+/** `align="up"` opens the menu above the button — for the sidebar footer, where there's no room below. */
+export function ThemeSwitcher({ align = "down" }: { align?: "down" | "up" }) {
   const t = useT();
   const theme = useSyncExternalStore(subscribe, getThemeSnapshot, () => DEFAULT_THEME);
   const [open, setOpen] = useState(false);
@@ -54,14 +56,19 @@ export function ThemeSwitcher() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={t.controls.changeTheme}
-        className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-card text-ink transition hover:border-brand"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-card text-ink transition hover:border-brand sm:h-9 sm:w-9"
       >
         <Palette className="h-4 w-4" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-30 mt-2 w-44 overflow-hidden rounded-xl border border-line bg-card p-1 shadow-lg">
+          <div
+            className={cn(
+              "absolute z-30 w-44 overflow-hidden rounded-xl border border-line bg-card p-1 shadow-lg",
+              align === "up" ? "bottom-full left-0 mb-2" : "right-0 mt-2",
+            )}
+          >
             {THEMES.map((option) => (
               <button
                 key={option.id}
