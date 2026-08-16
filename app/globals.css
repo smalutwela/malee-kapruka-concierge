@@ -22,6 +22,24 @@ body {
   height: 100%;
 }
 
+/* The layout paints under the phone's home indicator (viewportFit: "cover"), so
+   anything docked to the bottom — the composer, a sheet's action footer — pads
+   itself clear of it. Zero on every device without an inset. */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Tapping a control should never leave a grey flash box on Android/iOS. */
+@media (pointer: coarse) {
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
 body {
   background:
     radial-gradient(1100px 620px at 82% -12%, #2a1f47 0%, transparent 60%),

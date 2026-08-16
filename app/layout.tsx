@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
@@ -37,6 +37,25 @@ export const metadata: Metadata = {
     title: "Malee · Kapruka Shopping Concierge",
     description: DESCRIPTION,
   },
+};
+
+/**
+ * Malee is used on a phone far more than on a desktop, so the viewport is
+ * configured for one:
+ *  - `viewportFit: "cover"` lets the layout paint under the notch/home
+ *    indicator, and hands us the `env(safe-area-inset-*)` values that the
+ *    `.safe-bottom` utility spends on the composer and sheet footers.
+ *  - `interactiveWidget: "resizes-content"` makes the on-screen keyboard shrink
+ *    the viewport instead of sliding it up, so `h-dvh` keeps the composer
+ *    docked above the keyboard rather than pushing the header off-screen.
+ *  - No `maximumScale`/`userScalable` limits: pinch-zoom stays available, which
+ *    is both an accessibility requirement and the honest fix for small text.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 // Applies the saved theme to <html> before paint, avoiding a flash of the default theme.

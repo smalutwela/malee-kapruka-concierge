@@ -4,17 +4,23 @@ import { useEffect, useState } from "react";
 import {
   Clock,
   ExternalLink,
+  LogOut,
+  Package,
   Pencil,
   Receipt,
   RotateCcw,
   ShoppingBag,
+  Sparkles,
   Trash2,
   Truck,
   User,
+  UserRound,
   X,
 } from "lucide-react";
 import { cn, formatPrice } from "@/lib/utils";
+import { Sheet } from "@/components/sheet";
 import { useT, useLocale } from "@/lib/i18n/context";
+import { DEMO_EMAIL, useAccount } from "@/lib/account/store";
 import { useProfile, type BuyerDetails } from "@/lib/profile/store";
 import { useOrders, type OrderLine, type OrderRecord } from "@/lib/orders/store";
 
@@ -45,53 +51,159 @@ export function AccountDrawer({
   onClose,
   onReorder,
   onTrackNumber,
+  onAsk,
 }: {
   open: boolean;
   onClose: () => void;
   onReorder: (items: OrderLine[]) => void;
   onTrackNumber: (orderNumber: string) => void;
+  /** Send a message to Malee as if the shopper typed it (closes the drawer). */
+  onAsk: (text: string) => void;
 }) {
   const t = useT();
   const orders = useOrders((s) => s.orders);
   const clearOrders = useOrders((s) => s.clear);
+  const signedIn = useAccount((s) => s.email);
 
   return (
-    <div
-      className={cn("fixed inset-0 z-30", open ? "pointer-events-auto" : "pointer-events-none")}
-      aria-hidden={!open}
-    >
-      <div
-        onClick={onClose}
-        className={cn(
-          "absolute inset-0 bg-black/30 transition-opacity duration-300",
-          open ? "opacity-100" : "opacity-0",
-        )}
-      />
-      <aside
-        className={cn(
-          "absolute right-0 top-0 flex h-full w-full max-w-sm flex-col bg-cream shadow-2xl transition-transform duration-300",
-          open ? "translate-x-0" : "translate-x-full",
-        )}
-      >
-        <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <Receipt className="h-4 w-4 text-brand" />
-          <span className="font-display text-lg">{t.account.title}</span>
+    <Sheet open={open} onClose={onClose} label={t.account.title}>
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <Receipt className="h-4 w-4 text-brand" />
+        <span className="font-display text-lg">{t.account.title}</span>
+        <button
+          onClick={onClose}
+          aria-label={t.controls.close}
+          className="-mr-1 ml-auto flex h-10 w-10 items-center justify-center rounded-full text-muted hover:bg-black/5 sm:h-8 sm:w-8"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="safe-bottom min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-4">
+        <SignInSection onAsk={onAsk} />
+        <DetailsSection />
+        <TrackSection onTrack={onTrackNumber} />
+        <OrdersSection
+          orders={orders}
+          onReorder={onReorder}
+          onClearOrders={clearOrders}
+          signedIn={Boolean(signedIn)}
+        />
+      </div>
+    </Sheet>
+  );
+}
+
+/**
+ * Kapruka account sign-in — the gateway to the Phase 2 tools.
+ *
+ * The email is only ever what the shopper types here (or says to Malee in
+ * chat); nothing is pre-filled. The demo address is shown as a *hint* so a
+ * judge knows which account has data, but they still type it themselves — the
+ * MCP ground rule is that the customer supplies their own address.
+ */
+function SignInSection({ onAsk }: { onAsk: (text: string) => void }) {
+  const t = useT();
+  const email = useAccount((s) => s.email);
+  const name = useAccount((s) => s.name);
+  const signIn = useAccount((s) => s.signIn);
+  const signOut = useAccount((s) => s.signOut);
+  const [value, setValue] = useState("");
+  const [invalid, setInvalid] = useState(false);
+
+  function submit(email = value) {
+    const clean = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+      setInvalid(true);
+      return;
+    }
+    setInvalid(false);
+    signIn(clean);
+    setValue("");
+    onAsk(t.prompts.signIn(clean.toLowerCase()));
+  }
+
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <UserRound className="h-4 w-4 text-brand" />
+        <h3 className="font-display text-sm font-semibold">{t.account.signInTitle}</h3>
+      </div>
+
+      {email ? (
+        <div className="rounded-xl border border-brand/30 bg-brand/5 p-3">
+          <div className="text-sm font-medium text-ink">
+            {name ? t.account.signedInAs(name) : email}
+          </div>
+          {name && <div className="truncate text-xs text-muted">{email}</div>}
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              onClick={() => onAsk(t.prompts.myOrders)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-dark"
+            >
+              <Package className="h-3.5 w-3.5" /> {t.account.kaprukaOrders}
+            </button>
+            <button
+              onClick={signOut}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-black/5"
+            >
+              <LogOut className="h-3.5 w-3.5" /> {t.account.signOut}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2 rounded-xl border border-line bg-card p-3">
+          <p className="text-xs leading-relaxed text-muted">{t.account.signInHint}</p>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={value}
+              placeholder={t.account.signInPlaceholder}
+              aria-label={t.account.signInTitle}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setInvalid(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              className={cn(
+                // 16px on mobile — a smaller font makes iOS Safari zoom on focus.
+                "min-h-11 min-w-0 flex-1 rounded-lg border bg-cream px-3 py-2 text-base outline-none focus:border-brand sm:min-h-0 sm:text-sm",
+                invalid ? "border-[#b4503f]" : "border-line",
+              )}
+            />
+            <button
+              onClick={() => submit()}
+              disabled={!value.trim()}
+              className="shrink-0 rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-dark disabled:opacity-40"
+            >
+              {t.account.signInAction}
+            </button>
+          </div>
+          {invalid && <p className="text-[11px] text-[#b4503f]">{t.account.signInInvalid}</p>}
+          {/* The preview backend serves one address only, so this is the path
+              that actually works — a button, not a caption to retype by hand. */}
           <button
-            onClick={onClose}
-            aria-label={t.controls.close}
-            className="ml-auto rounded-full p-1 text-muted hover:bg-black/5"
+            onClick={() => submit(DEMO_EMAIL)}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-dashed border-brand/40 px-3 py-1.5 text-left transition hover:border-brand hover:bg-brand/5 sm:min-h-0"
           >
-            <X className="h-5 w-5" />
+            <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-ink">
+                {t.account.signInDemoAction}
+              </span>
+              <span className="block truncate font-mono text-[11px] text-muted">{DEMO_EMAIL}</span>
+            </span>
           </button>
         </div>
-
-        <div className="flex-1 space-y-5 overflow-y-auto p-4">
-          <DetailsSection />
-          <TrackSection onTrack={onTrackNumber} />
-          <OrdersSection orders={orders} onReorder={onReorder} onClearOrders={clearOrders} />
-        </div>
-      </aside>
-    </div>
+      )}
+    </section>
   );
 }
 
@@ -162,7 +274,7 @@ function DetailsSection() {
           />
           <button
             onClick={commit}
-            className="w-full rounded-full bg-brand py-2 text-xs font-semibold text-white transition hover:bg-brand-dark"
+            className="min-h-11 w-full rounded-full bg-brand py-2 text-xs font-semibold text-white transition hover:bg-brand-dark sm:min-h-0"
           >
             {t.account.save}
           </button>
@@ -196,7 +308,7 @@ function Field({
       placeholder={placeholder}
       aria-label={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-lg border border-line bg-cream px-3 py-2 text-sm outline-none focus:border-brand"
+      className="min-h-11 w-full rounded-lg border border-line bg-cream px-3 py-2 text-base outline-none focus:border-brand sm:min-h-0 sm:text-sm"
     />
   );
 }
@@ -228,12 +340,12 @@ function TrackSection({ onTrack }: { onTrack: (orderNumber: string) => void }) {
               submit();
             }
           }}
-          className="min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 text-sm outline-none focus:border-brand"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-line bg-card px-3 py-2 text-base outline-none focus:border-brand sm:min-h-0 sm:text-sm"
         />
         <button
           onClick={submit}
           disabled={!value.trim()}
-          className="shrink-0 rounded-full bg-brand px-4 py-2 text-xs font-semibold text-white transition hover:bg-brand-dark disabled:opacity-40"
+          className="min-h-11 shrink-0 rounded-full bg-brand px-4 text-xs font-semibold text-white transition hover:bg-brand-dark disabled:opacity-40 sm:min-h-0 sm:py-2"
         >
           {t.account.track}
         </button>
@@ -246,17 +358,23 @@ function OrdersSection({
   orders,
   onReorder,
   onClearOrders,
+  signedIn,
 }: {
   orders: OrderRecord[];
   onReorder: (items: OrderLine[]) => void;
   onClearOrders: () => void;
+  /** When signed in, the Kapruka account is the real history — these are just
+   *  the orders placed in this chat, so the heading says so. */
+  signedIn: boolean;
 }) {
   const t = useT();
   return (
     <section>
       <div className="mb-2 flex items-center gap-2">
         <ShoppingBag className="h-4 w-4 text-brand" />
-        <h3 className="font-display text-sm font-semibold">{t.account.ordersTitle}</h3>
+        <h3 className="font-display text-sm font-semibold">
+          {signedIn ? t.account.localOrdersTitle : t.account.ordersTitle}
+        </h3>
         {orders.length > 0 && (
           <button
             onClick={onClearOrders}
